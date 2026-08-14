@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Windows.Input;
+using System.Windows.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
@@ -7,6 +8,8 @@ namespace IPDocketing.App.ViewModels;
 
 public partial class MainWindowViewModel : ViewModelBase
 {
+    private readonly DispatcherTimer _clockTimer;
+
     public ObservableCollection<NavItem> NavItems { get; } = new()
     {
         new NavItem { Key = "Dashboard", Label = "Dashboard", Glyph = "\uE80F" },
@@ -33,6 +36,9 @@ public partial class MainWindowViewModel : ViewModelBase
     [ObservableProperty]
     private string ocrStatusText = "OCR: idle";
 
+    [ObservableProperty]
+    private string currentTime = DateTime.Now.ToString("ddd, dd MMM yyyy  HH:mm:ss");
+
     public ICommand NavigateCommand { get; }
 
     public MainWindowViewModel()
@@ -40,6 +46,14 @@ public partial class MainWindowViewModel : ViewModelBase
         selectedNavItem = NavItems[0];
         NavigateCommand = new RelayCommand<NavItem>(Navigate);
         Navigate(NavItems[0]);
+
+        _clockTimer = new DispatcherTimer
+        {
+            Interval = TimeSpan.FromSeconds(1)
+        };
+        _clockTimer.Tick += (_, _) =>
+            CurrentTime = DateTime.Now.ToString("ddd, dd MMM yyyy  HH:mm:ss");
+        _clockTimer.Start();
     }
 
     private void Navigate(NavItem? item)

@@ -1,31 +1,30 @@
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
+    <!-- ============================================================
+         Theme: Midnight Indigo (Dark Mode)
+         Deep, low-glare dark UI for long docketing sessions.
+         ============================================================ -->
+
     <!-- ===================== Surface colors ===================== -->
-    <Color x:Key="BackgroundLightColor">#F3F3F3</Color>
-    <Color x:Key="BackgroundDarkColor">#1B1B2F</Color>
+    <Color x:Key="BackgroundLightColor">#F0F2F7</Color>   <!-- kept for reference / future toggle -->
+    <Color x:Key="BackgroundDarkColor">#0B0E18</Color>    <!-- near-black indigo -->
     <Color x:Key="SurfaceLightColor">#FFFFFF</Color>
-    <Color x:Key="SurfaceDarkColor">#25253A</Color>
+    <Color x:Key="SurfaceDarkColor">#151A2C</Color>       <!-- elevated card surface -->
 
     <!-- ===================== Brand / accent ===================== -->
-    <Color x:Key="BrandAccentColor">#0F3460</Color>
-    <!-- Enterprise Cobalt Navy -->
-    <Color x:Key="BrandAccentHoverColor">#2B5AED</Color>
-    <!-- Tech Blue, for hover/active states -->
+    <Color x:Key="BrandAccentColor">#5C7CFA</Color>       <!-- soft bright indigo -->
+    <Color x:Key="BrandAccentHoverColor">#748FFC</Color>  <!-- lighter on hover -->
 
     <!-- ===================== Urgency / status colors ===================== -->
-    <Color x:Key="OverdueColor">#DC143C</Color>
-    <!-- Crimson Red: hard deadline overdue / 0-2 days -->
-    <Color x:Key="UpcomingColor">#FF8C00</Color>
-    <!-- Amber Orange: upcoming / warning, 3-14 days -->
-    <Color x:Key="PendingPtoColor">#6A5ACD</Color>
-    <!-- Purple / Indigo: pending PTO response -->
-    <Color x:Key="CompletedColor">#2ECC71</Color>
-    <!-- Emerald Green: completed / cleared -->
+    <Color x:Key="OverdueColor">#FF6B6B</Color>           <!-- softer red for dark bg -->
+    <Color x:Key="UpcomingColor">#FFA94D</Color>          <!-- warm amber -->
+    <Color x:Key="PendingPtoColor">#9775FA</Color>        <!-- soft violet -->
+    <Color x:Key="CompletedColor">#51CF66</Color>         <!-- soft green -->
 
-    <!-- ===================== Brushes ===================== -->
-    <SolidColorBrush x:Key="BackgroundBrush" Color="{StaticResource BackgroundLightColor}" />
-    <SolidColorBrush x:Key="SurfaceBrush" Color="{StaticResource SurfaceLightColor}" />
+    <!-- ===================== Brushes (DARK MODE ACTIVE) ===================== -->
+    <SolidColorBrush x:Key="BackgroundBrush" Color="{StaticResource BackgroundDarkColor}" />
+    <SolidColorBrush x:Key="SurfaceBrush" Color="{StaticResource SurfaceDarkColor}" />
     <SolidColorBrush x:Key="BrandAccentBrush" Color="{StaticResource BrandAccentColor}" />
     <SolidColorBrush x:Key="BrandAccentHoverBrush" Color="{StaticResource BrandAccentHoverColor}" />
 
@@ -34,11 +33,21 @@
     <SolidColorBrush x:Key="PendingPtoBrush" Color="{StaticResource PendingPtoColor}" />
     <SolidColorBrush x:Key="CompletedBrush" Color="{StaticResource CompletedColor}" />
 
-    <SolidColorBrush x:Key="TextPrimaryBrush" Color="#1B1B2F" />
-    <SolidColorBrush x:Key="TextSecondaryBrush" Color="#5B5B6B" />
-    <SolidColorBrush x:Key="BorderBrush1" Color="#E1E1E6" />
-    <SolidColorBrush x:Key="NavRailBrush" Color="#161625" />
-    <SolidColorBrush x:Key="NavRailTextBrush" Color="#D8D8E4" />
+    <!-- Text (light on dark) -->
+    <SolidColorBrush x:Key="TextPrimaryBrush" Color="#E8EAF2" />
+    <SolidColorBrush x:Key="TextSecondaryBrush" Color="#8B92A8" />
+
+    <!-- Borders & dividers -->
+    <SolidColorBrush x:Key="BorderBrush1" Color="#2A3148" />
+
+    <!-- Navigation rail (slightly deeper than content) -->
+    <SolidColorBrush x:Key="NavRailBrush" Color="#080B14" />
+    <SolidColorBrush x:Key="NavRailTextBrush" Color="#A8B0C8" />
+    <SolidColorBrush x:Key="NavRailHoverBrush" Color="#1A2038" />
+    <SolidColorBrush x:Key="NavRailActiveBrush" Color="#5C7CFA" />
+
+    <!-- Subtle accent for cards / highlights -->
+    <SolidColorBrush x:Key="AccentSubtleBrush" Color="#1A2240" />
 
     <!-- ===================== Typography ===================== -->
     <FontFamily x:Key="AppFontFamily">Segoe UI Variable, Segoe UI</FontFamily>
@@ -52,6 +61,6 @@
     <!-- Compact row height for high-density data grids -->
     <sys:Double xmlns:sys="clr-namespace:System;assembly=mscorlib" x:Key="DataRowHeight">32</sys:Double>
 
-    <CornerRadius x:Key="CardCornerRadius">8</CornerRadius>
+    <CornerRadius x:Key="CardCornerRadius">10</CornerRadius>
 
 </ResourceDictionary>

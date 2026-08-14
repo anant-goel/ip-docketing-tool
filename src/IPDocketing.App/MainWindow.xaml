@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="clr-namespace:IPDocketing.App.ViewModels"
         xmlns:views="clr-namespace:IPDocketing.App.Views"
-        Title="IP Docketing - Enterprise Portfolio &amp; Deadline Management"
+        Title="IP Docketing - Enterprise Portfolio &amp; Deadline Management by Anant Goel"
         Height="820" Width="1360" MinHeight="600" MinWidth="1000"
         WindowStartupLocation="CenterScreen"
         Icon="Assets/app.ico">
@@ -56,6 +56,10 @@
                 <TextBlock DockPanel.Dock="Left" Text="IP Docketing" Foreground="White" FontWeight="SemiBold"
                            FontSize="14" VerticalAlignment="Center" Margin="4,0,24,0" />
                 <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                    <!-- Live clock -->
+                    <TextBlock Text="{Binding CurrentTime}" Foreground="{StaticResource NavRailTextBrush}"
+                               FontSize="12" VerticalAlignment="Center" Margin="0,0,18,0"
+                               FontFamily="Consolas, Cascadia Mono, Segoe UI" />
                     <Ellipse Width="8" Height="8" Fill="{StaticResource CompletedBrush}" Margin="0,0,6,0" />
                     <TextBlock Text="{Binding SyncStatusText}" Foreground="{StaticResource NavRailTextBrush}"
                                FontSize="11" VerticalAlignment="Center" Margin="0,0,16,0" />
@@ -63,7 +67,8 @@
                             Command="{Binding NavigateCommand}" CommandParameter="{Binding NavItems[2]}" />
                 </StackPanel>
                 <TextBox Width="260" Padding="6,4" VerticalAlignment="Center"
-                         Background="#22223A" Foreground="White" BorderThickness="0" Tag="Search matters, deadlines..." />
+                         Background="#1E2545" Foreground="White" BorderThickness="0"
+                         CaretBrush="White" Tag="Search matters, deadlines..." />
             </DockPanel>
         </Border>
 
@@ -108,14 +113,18 @@
 
         <!-- Bottom status bar -->
         <Border Grid.Row="2" Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource BorderBrush1}" BorderThickness="0,1,0,0">
-            <StackPanel Orientation="Horizontal" Margin="12,0">
-                <TextBlock Text="Local DB: synced" FontSize="11" VerticalAlignment="Center"
-                           Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,20,0" />
-                <TextBlock Text="{Binding PtoConnectivityText}" FontSize="11" VerticalAlignment="Center"
-                           Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,20,0" />
-                <TextBlock Text="{Binding OcrStatusText}" FontSize="11" VerticalAlignment="Center"
-                           Foreground="{StaticResource TextSecondaryBrush}" />
-            </StackPanel>
+            <DockPanel Margin="12,0">
+                <TextBlock DockPanel.Dock="Right" Text="Developed by Anant Goel" FontSize="11"
+                           VerticalAlignment="Center" Foreground="{StaticResource TextSecondaryBrush}" />
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="Local DB: synced" FontSize="11" VerticalAlignment="Center"
+                               Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,20,0" />
+                    <TextBlock Text="{Binding PtoConnectivityText}" FontSize="11" VerticalAlignment="Center"
+                               Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,20,0" />
+                    <TextBlock Text="{Binding OcrStatusText}" FontSize="11" VerticalAlignment="Center"
+                               Foreground="{StaticResource TextSecondaryBrush}" />
+                </StackPanel>
+            </DockPanel>
         </Border>
     </Grid>
 </Window>

@@ -29,10 +29,10 @@
                     </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
-                            <Setter TargetName="Bd" Property="Background" Value="#2A2A42" />
+                            <Setter TargetName="Bd" Property="Background" Value="{StaticResource NavRailHoverBrush}" />
                         </Trigger>
                         <Trigger Property="Tag" Value="Active">
-                            <Setter TargetName="Bd" Property="Background" Value="{StaticResource BrandAccentBrush}" />
+                            <Setter TargetName="Bd" Property="Background" Value="{StaticResource NavRailActiveBrush}" />
                             <Setter Property="Foreground" Value="White" />
                         </Trigger>
                     </ControlTemplate.Triggers>
@@ -93,7 +93,7 @@
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="Effect">
             <Setter.Value>
-                <DropShadowEffect BlurRadius="12" ShadowDepth="1" Opacity="0.08" Color="Black" />
+                <DropShadowEffect BlurRadius="16" ShadowDepth="2" Opacity="0.10" Color="#1A1B26" />
             </Setter.Value>
         </Setter>
     </Style>
