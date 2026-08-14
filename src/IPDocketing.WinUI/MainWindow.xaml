@@ -54,7 +54,6 @@
                 x:Name="NavView"
                 Grid.Row="1"
                 Background="Transparent"
-                PaneBackground="{ThemeResource GlassPanelBrush}"
                 PaneDisplayMode="Left"
                 IsBackButtonVisible="Collapsed"
                 IsSettingsVisible="True"

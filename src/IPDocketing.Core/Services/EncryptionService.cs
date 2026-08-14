@@ -1,3 +1,4 @@
+using System.Runtime.Versioning;
 using System.Security.Cryptography;
 using System.Text;
 
@@ -8,6 +9,7 @@ namespace IPDocketing.Core.Services;
 /// Only the same Windows account on this machine can decrypt the data.
 /// Used for API key storage and encrypted database backups.
 /// </summary>
+[SupportedOSPlatform("windows")]
 public static class EncryptionService
 {
     private static readonly byte[] Entropy = Encoding.UTF8.GetBytes("IPDocketing.v1.Professional");
