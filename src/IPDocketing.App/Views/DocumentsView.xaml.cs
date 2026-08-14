@@ -1,7 +1,16 @@
 using System.Windows;
-using System.Windows.Controls;
 using IPDocketing.App.ViewModels;
 using IPDocketing.Core.Models;
+
+// UseWindowsForms is enabled (for the tray icon on MainWindow), which pulls
+// System.Windows.Forms into scope alongside WPF's System.Windows.* namespaces.
+// Several type names exist in both (UserControl, DragEventArgs, DataFormats,
+// MessageBox), so those specific ones are aliased explicitly to the WPF
+// version rather than left to a plain `using`, which would stay ambiguous.
+using UserControl = System.Windows.Controls.UserControl;
+using DragEventArgs = System.Windows.DragEventArgs;
+using DataFormats = System.Windows.DataFormats;
+using MessageBox = System.Windows.MessageBox;
 
 namespace IPDocketing.App.Views;
 

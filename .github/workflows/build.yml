@@ -1,16 +1,10 @@
 name: Build Windows App
 
-# Automatic triggers: every push/PR to main/master, and any "v*" tag.
-# Manual trigger: the "Run workflow" button on the Actions tab (workflow_dispatch
-# below) - this is the toggle to kick off a compile on demand without pushing a
-# commit. It exposes two inputs so you can choose the build config and force a
-# GitHub Release attachment from an ad-hoc run.
+# Manual-only: this workflow does NOT run automatically on push, pull
+# request, or tag - pushing/uploading files to the repo will not trigger a
+# build. The only way to start it is the "Run workflow" button on the
+# Actions tab (workflow_dispatch below).
 on:
-  push:
-    branches: [ main, master ]
-    tags: [ "v*" ]
-  pull_request:
-    branches: [ main, master ]
   workflow_dispatch:
     inputs:
       configuration:
@@ -46,12 +40,12 @@ jobs:
       - name: Build (quick verification)
         run: >
           dotnet build src/IPDocketing.App/IPDocketing.App.csproj
-          -c ${{ inputs.configuration || 'Debug' }} --no-restore
+          -c ${{ inputs.configuration }} --no-restore
 
       - name: Publish self-contained win-x64 executable
         run: >
           dotnet publish src/IPDocketing.App/IPDocketing.App.csproj
-          -c ${{ inputs.configuration || 'Release' }}
+          -c ${{ inputs.configuration }}
           -r win-x64
           --self-contained true
           -p:PublishSingleFile=true
@@ -66,16 +60,8 @@ jobs:
           path: publish/**
           if-no-files-found: error
 
-      - name: Create GitHub Release (tag push)
-        if: startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v2
-        with:
-          files: publish/IPDocketing.exe
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Create GitHub Release (manual request)
-        if: github.event_name == 'workflow_dispatch' && inputs.create_release == true
+      - name: Create GitHub Release (optional)
+        if: inputs.create_release == true
         uses: softprops/action-gh-release@v2
         with:
           tag_name: manual-run-${{ github.run_number }}

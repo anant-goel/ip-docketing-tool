@@ -40,8 +40,7 @@ breakdown:
 | Windows tray icon + balloon notification for overdue deadlines | Working |
 | Ctrl+N / Ctrl+D shortcuts | Working (jump to Matters / Deadlines) |
 | Dark mode toggle | UI toggle present; theme swap not yet wired (Tokens.xaml has both light/dark colors defined - swap the merged dictionary at runtime to finish it) |
-| GitHub Actions: automatic build on push/PR/tag | Working |
-| GitHub Actions: manual "Run workflow" trigger with build-config choice | Working (`workflow_dispatch` inputs - see below) |
+| GitHub Actions: manual-only, never runs on push/PR/tag | Working - see below |
 
 ## Project layout
 
@@ -74,25 +73,26 @@ so the dashboard isn't empty.
 
 ## Building with GitHub Actions (what you asked for)
 
-1. Push this folder's contents to your `ip-docketing` GitHub repo (root of
-   the repo should contain `src/`, `.github/`, this README, etc.).
-2. **Automatic:** push to `main`/`master` or open a PR - the workflow runs
-   on its own.
-3. **Manual trigger (the toggle):** go to the repo's **Actions** tab ->
+1. Push/upload this folder's contents to your `ip-docketing` GitHub repo
+   (root of the repo should contain `src/`, `.github/`, this README, etc.).
+   **Nothing runs automatically when you do this** - the workflow has no
+   `push`, `pull_request`, or tag trigger, so uploading files or committing
+   will never kick off a build on its own.
+2. **To build, trigger it manually:** go to the repo's **Actions** tab ->
    **"Build Windows App"** -> click **"Run workflow"**. You'll get two
    options before it starts:
    - **configuration**: `Release` (default) or `Debug`
    - **create_release**: check this to have the built `.exe` attached to a
-     GitHub Release immediately, even without pushing a version tag
-4. Either way, the workflow:
+     GitHub Release immediately
+3. The workflow then:
    - Restores and builds the app on `windows-latest`.
    - Publishes a **self-contained, single-file** `IPDocketing.exe` for
      `win-x64` (no .NET runtime install needed on the target machine).
    - Uploads it as a build artifact (`IPDocketing-win-x64`) you can download
      from the Actions run summary page.
-5. To cut a release build tied to a version number instead, push a tag like
-   `v1.0.0` - the workflow attaches `publish/IPDocketing.exe` to that
-   release automatically (this path doesn't need the manual toggle).
+
+If you'd rather it also build automatically on push/PR/tag later, add the
+relevant triggers back under `on:` in `.github/workflows/build.yml`.
 
 ## Rule engine architecture
 
