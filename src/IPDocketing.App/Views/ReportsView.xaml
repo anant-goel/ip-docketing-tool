@@ -1,0 +1,35 @@
+<UserControl x:Class="IPDocketing.App.Views.ReportsView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="clr-namespace:IPDocketing.App.ViewModels"
+             d:DataContext="{d:DesignInstance vm:ReportsViewModel}"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008/design"
+             mc:Ignorable="d"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006">
+
+    <StackPanel Margin="28">
+        <TextBlock Text="Reports &amp; Client Sync" Style="{StaticResource PageTitleStyle}" />
+        <TextBlock Text="Export portfolio data for client reporting or billing integration."
+                   Style="{StaticResource SubtitleStyle}" />
+
+        <Border Style="{StaticResource CardStyle}" Margin="0,0,0,16">
+            <StackPanel>
+                <TextBlock Text="Deadlines report" FontWeight="SemiBold" Margin="0,0,0,6" />
+                <TextBlock Text="All open and completed deadlines with owner and status." Margin="0,0,0,10"
+                           Foreground="{StaticResource TextSecondaryBrush}" />
+                <Button Content="Export to CSV" Style="{StaticResource PrimaryButtonStyle}"
+                        HorizontalAlignment="Left" Command="{Binding ExportDeadlinesCsvCommand}" />
+            </StackPanel>
+        </Border>
+
+        <Border Style="{StaticResource CardStyle}">
+            <StackPanel>
+                <TextBlock Text="Matters / portfolio report" FontWeight="SemiBold" Margin="0,0,0,6" />
+                <TextBlock Text="Full matter list with client, jurisdiction, and status." Margin="0,0,0,10"
+                           Foreground="{StaticResource TextSecondaryBrush}" />
+                <Button Content="Export to CSV" Style="{StaticResource PrimaryButtonStyle}"
+                        HorizontalAlignment="Left" Command="{Binding ExportMattersCsvCommand}" />
+            </StackPanel>
+        </Border>
+    </StackPanel>
+</UserControl>

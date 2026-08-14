@@ -1,0 +1,39 @@
+<UserControl x:Class="IPDocketing.App.Views.DocumentsView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="clr-namespace:IPDocketing.App.ViewModels"
+             d:DataContext="{d:DesignInstance vm:DocumentsViewModel}"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008/design"
+             mc:Ignorable="d" AllowDrop="True" Drop="UserControl_Drop"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006">
+
+    <Grid Margin="28">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,16">
+            <StackPanel>
+                <TextBlock Text="Documents" Style="{StaticResource PageTitleStyle}" />
+                <TextBlock Text="Drag a file onto this page, or use Import. OCR engine is pluggable (see README)."
+                           Style="{StaticResource SubtitleStyle}" />
+            </StackPanel>
+            <Button Content="Import..." Style="{StaticResource PrimaryButtonStyle}"
+                    Command="{Binding ImportCommand}" VerticalAlignment="Top" Margin="16,0,0,0" />
+            <Button Content="Refresh" Style="{StaticResource SecondaryButtonStyle}"
+                    Command="{Binding RefreshCommand}" VerticalAlignment="Top" Margin="8,0,0,0" />
+        </StackPanel>
+
+        <DataGrid Grid.Row="1" Style="{StaticResource DenseDataGridStyle}" ItemsSource="{Binding Documents}">
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="File" Binding="{Binding FileName}" Width="220" />
+                <DataGridTextColumn Header="Matter #" Binding="{Binding Matter.MatterNumber}" Width="130" />
+                <DataGridTextColumn Header="Type" Binding="{Binding DocumentType}" Width="120" />
+                <DataGridTextColumn Header="Version" Binding="{Binding Version}" Width="70" />
+                <DataGridTextColumn Header="Uploaded" Binding="{Binding UploadedDate, StringFormat=g}" Width="150" />
+                <DataGridTextColumn Header="OCR" Binding="{Binding OcrProcessed}" Width="*" />
+            </DataGrid.Columns>
+        </DataGrid>
+    </Grid>
+</UserControl>

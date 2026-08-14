@@ -1,0 +1,59 @@
+<UserControl x:Class="IPDocketing.App.Views.MattersView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="clr-namespace:IPDocketing.App.ViewModels"
+             d:DataContext="{d:DesignInstance vm:MattersViewModel}"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008/design"
+             mc:Ignorable="d"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006">
+
+    <Grid Margin="28">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <TextBlock Grid.Row="0" Text="Matters / Portfolio" Style="{StaticResource PageTitleStyle}" />
+        <TextBlock Grid.Row="0" Text="Patents, trademarks, copyrights, and trade secrets in one portfolio view."
+                   Style="{StaticResource SubtitleStyle}" Margin="0,28,0,16" VerticalAlignment="Bottom" />
+
+        <Border Grid.Row="1" Style="{StaticResource CardStyle}" Margin="0,0,0,16">
+            <StackPanel>
+                <TextBlock Text="Quick-docket a new matter" FontWeight="SemiBold" Margin="0,0,0,10" />
+                <WrapPanel>
+                    <TextBox Width="150" Margin="0,0,8,8" Padding="6"
+                             Text="{Binding NewMatterNumber, UpdateSourceTrigger=PropertyChanged}"
+                             Tag="Matter #" />
+                    <TextBox Width="240" Margin="0,0,8,8" Padding="6"
+                             Text="{Binding NewTitle, UpdateSourceTrigger=PropertyChanged}"
+                             Tag="Title" />
+                    <TextBox Width="180" Margin="0,0,8,8" Padding="6"
+                             Text="{Binding NewClientName, UpdateSourceTrigger=PropertyChanged}"
+                             Tag="Client" />
+                    <ComboBox Width="120" Margin="0,0,8,8" Padding="6"
+                              ItemsSource="{Binding MatterTypes}"
+                              SelectedItem="{Binding NewType}" />
+                    <TextBox Width="70" Margin="0,0,8,8" Padding="6"
+                             Text="{Binding NewCountry, UpdateSourceTrigger=PropertyChanged}"
+                             Tag="Country" />
+                    <Button Content="Add Matter (Ctrl+N)" Style="{StaticResource PrimaryButtonStyle}"
+                            Command="{Binding AddMatterCommand}" Margin="0,0,0,8" />
+                </WrapPanel>
+            </StackPanel>
+        </Border>
+
+        <DataGrid Grid.Row="2" Style="{StaticResource DenseDataGridStyle}"
+                  ItemsSource="{Binding Matters}" SelectedItem="{Binding SelectedMatter}">
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="Matter #" Binding="{Binding MatterNumber}" Width="130" />
+                <DataGridTextColumn Header="Title" Binding="{Binding Title}" Width="*" />
+                <DataGridTextColumn Header="Client" Binding="{Binding ClientName}" Width="160" />
+                <DataGridTextColumn Header="Type" Binding="{Binding Type}" Width="100" />
+                <DataGridTextColumn Header="Country" Binding="{Binding Country}" Width="80" />
+                <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="100" />
+                <DataGridTextColumn Header="Filing Date" Binding="{Binding FilingDate, StringFormat=d}" Width="110" />
+            </DataGrid.Columns>
+        </DataGrid>
+    </Grid>
+</UserControl>

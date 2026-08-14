@@ -1,0 +1,120 @@
+<Window x:Class="IPDocketing.App.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="clr-namespace:IPDocketing.App.ViewModels"
+        xmlns:views="clr-namespace:IPDocketing.App.Views"
+        Title="IP Docketing - Enterprise Portfolio &amp; Deadline Management"
+        Height="820" Width="1360" MinHeight="600" MinWidth="1000"
+        WindowStartupLocation="CenterScreen">
+
+    <Window.DataContext>
+        <vm:MainWindowViewModel />
+    </Window.DataContext>
+
+    <Window.InputBindings>
+        <KeyBinding Key="N" Modifiers="Control" Command="{Binding NavigateCommand}"
+                    CommandParameter="{Binding NavItems[1]}" />
+        <KeyBinding Key="D" Modifiers="Control" Command="{Binding NavigateCommand}"
+                    CommandParameter="{Binding NavItems[2]}" />
+    </Window.InputBindings>
+
+    <Window.Resources>
+        <DataTemplate DataType="{x:Type vm:DashboardViewModel}">
+            <views:DashboardView />
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:MattersViewModel}">
+            <views:MattersView />
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:DeadlinesViewModel}">
+            <views:DeadlinesView />
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:PtoSyncViewModel}">
+            <views:PtoSyncView />
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:DocumentsViewModel}">
+            <views:DocumentsView />
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:ReportsViewModel}">
+            <views:ReportsView />
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:SettingsViewModel}">
+            <views:SettingsView />
+        </DataTemplate>
+    </Window.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="48" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="28" />
+        </Grid.RowDefinitions>
+
+        <!-- Title bar / quick access toolbar -->
+        <Border Grid.Row="0" Background="{StaticResource NavRailBrush}">
+            <DockPanel LastChildFill="True" Margin="12,0">
+                <TextBlock DockPanel.Dock="Left" Text="IP Docketing" Foreground="White" FontWeight="SemiBold"
+                           FontSize="14" VerticalAlignment="Center" Margin="4,0,24,0" />
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Ellipse Width="8" Height="8" Fill="{StaticResource CompletedBrush}" Margin="0,0,6,0" />
+                    <TextBlock Text="{Binding SyncStatusText}" Foreground="{StaticResource NavRailTextBrush}"
+                               FontSize="11" VerticalAlignment="Center" Margin="0,0,16,0" />
+                    <Button Content="+ Quick Docket" Style="{StaticResource PrimaryButtonStyle}" Padding="10,5"
+                            Command="{Binding NavigateCommand}" CommandParameter="{Binding NavItems[2]}" />
+                </StackPanel>
+                <TextBox Width="260" Padding="6,4" VerticalAlignment="Center"
+                         Background="#22223A" Foreground="White" BorderThickness="0" Tag="Search matters, deadlines..." />
+            </DockPanel>
+        </Border>
+
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="220" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <!-- Left navigation rail -->
+            <Border Grid.Column="0" Background="{StaticResource NavRailBrush}">
+                <ItemsControl ItemsSource="{Binding NavItems}" Margin="0,12,0,0">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Button Style="{StaticResource NavRailButtonStyle}" HorizontalAlignment="Stretch"
+                                    Command="{Binding DataContext.NavigateCommand,
+                                              RelativeSource={RelativeSource AncestorType=Window}}"
+                                    CommandParameter="{Binding}">
+                                <Button.Tag>
+                                    <MultiBinding Converter="{x:Static views:NavActiveConverter.Instance}">
+                                        <Binding Path="." />
+                                        <Binding Path="DataContext.SelectedNavItem"
+                                                 RelativeSource="{RelativeSource AncestorType=Window}" />
+                                    </MultiBinding>
+                                </Button.Tag>
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="{Binding Glyph}" FontFamily="Segoe MDL2 Assets"
+                                               Width="20" Margin="0,0,10,0" />
+                                    <TextBlock Text="{Binding Label}" />
+                                </StackPanel>
+                            </Button>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </Border>
+
+            <!-- Central workspace -->
+            <Grid Grid.Column="1" Background="{StaticResource BackgroundBrush}">
+                <ContentControl Content="{Binding CurrentView}" />
+            </Grid>
+        </Grid>
+
+        <!-- Bottom status bar -->
+        <Border Grid.Row="2" Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource BorderBrush1}" BorderThickness="0,1,0,0">
+            <StackPanel Orientation="Horizontal" Margin="12,0">
+                <TextBlock Text="Local DB: synced" FontSize="11" VerticalAlignment="Center"
+                           Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,20,0" />
+                <TextBlock Text="{Binding PtoConnectivityText}" FontSize="11" VerticalAlignment="Center"
+                           Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,20,0" />
+                <TextBlock Text="{Binding OcrStatusText}" FontSize="11" VerticalAlignment="Center"
+                           Foreground="{StaticResource TextSecondaryBrush}" />
+            </StackPanel>
+        </Border>
+    </Grid>
+</Window>

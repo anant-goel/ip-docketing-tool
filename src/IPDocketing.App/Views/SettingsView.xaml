@@ -1,0 +1,62 @@
+<UserControl x:Class="IPDocketing.App.Views.SettingsView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="clr-namespace:IPDocketing.App.ViewModels"
+             d:DataContext="{d:DesignInstance vm:SettingsViewModel}"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008/design"
+             mc:Ignorable="d"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006">
+
+    <Grid Margin="28">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <TextBlock Grid.Row="0" Text="Settings" Style="{StaticResource PageTitleStyle}" />
+        <TextBlock Grid.Row="0" Margin="0,28,0,16" VerticalAlignment="Bottom"
+                   Text="Role-based access, appearance, and the immutable audit trail."
+                   Style="{StaticResource SubtitleStyle}" />
+
+        <Border Grid.Row="1" Style="{StaticResource CardStyle}" Margin="0,0,0,16">
+            <StackPanel>
+                <TextBlock Text="Access &amp; appearance" FontWeight="SemiBold" Margin="0,0,0,10" />
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                    <TextBlock Text="Current user:" VerticalAlignment="Center" Width="110" />
+                    <TextBox Width="200" Padding="6" Text="{Binding CurrentUser, UpdateSourceTrigger=PropertyChanged}" />
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                    <TextBlock Text="Role (RBAC):" VerticalAlignment="Center" Width="110" />
+                    <ComboBox Width="220" Padding="6" ItemsSource="{Binding Roles}" SelectedItem="{Binding CurrentRole}" />
+                </StackPanel>
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="Dark mode:" VerticalAlignment="Center" Width="110" />
+                    <CheckBox IsChecked="{Binding IsDarkMode}" VerticalAlignment="Center" />
+                </StackPanel>
+            </StackPanel>
+        </Border>
+
+        <Border Grid.Row="2" Style="{StaticResource CardStyle}">
+            <DockPanel>
+                <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,10">
+                    <TextBlock Text="Recent audit trail (immutable, hash-chained)" FontWeight="SemiBold" VerticalAlignment="Center" />
+                    <Button Content="Verify chain integrity" Style="{StaticResource SecondaryButtonStyle}"
+                            Command="{Binding VerifyChainCommand}" Margin="16,0,0,0" Padding="10,4" />
+                    <TextBlock Text="{Binding ChainStatus}" VerticalAlignment="Center" Margin="12,0,0,0"
+                               Foreground="{StaticResource TextSecondaryBrush}" FontSize="11" />
+                </StackPanel>
+                <DataGrid Style="{StaticResource DenseDataGridStyle}" ItemsSource="{Binding RecentAuditEntries}">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="Time" Binding="{Binding Timestamp, StringFormat=g}" Width="150" />
+                        <DataGridTextColumn Header="User" Binding="{Binding UserName}" Width="110" />
+                        <DataGridTextColumn Header="Action" Binding="{Binding ActionType}" Width="90" />
+                        <DataGridTextColumn Header="Entity" Binding="{Binding EntityType}" Width="90" />
+                        <DataGridTextColumn Header="Details" Binding="{Binding Details}" Width="*" />
+                        <DataGridTextColumn Header="Hash" Binding="{Binding RecordHash}" Width="90" />
+                    </DataGrid.Columns>
+                </DataGrid>
+            </DockPanel>
+        </Border>
+    </Grid>
+</UserControl>

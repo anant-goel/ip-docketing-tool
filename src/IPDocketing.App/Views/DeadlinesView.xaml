@@ -1,0 +1,75 @@
+<UserControl x:Class="IPDocketing.App.Views.DeadlinesView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="clr-namespace:IPDocketing.App.ViewModels"
+             d:DataContext="{d:DesignInstance vm:DeadlinesViewModel}"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008/design"
+             mc:Ignorable="d"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006">
+
+    <Grid Margin="28">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,16">
+            <StackPanel>
+                <TextBlock Text="Deadlines" Style="{StaticResource PageTitleStyle}" />
+                <TextBlock Text="Nominal = statutory end before roll. Effective = operative date after non-working-day roll-forward. Colors: red = overdue, amber = due soon, indigo = pending PTO, green = cleared."
+                           Style="{StaticResource SubtitleStyle}" />
+            </StackPanel>
+            <Button Content="Refresh" Style="{StaticResource SecondaryButtonStyle}"
+                    Command="{Binding RefreshCommand}" VerticalAlignment="Top" Margin="16,0,0,0" />
+        </StackPanel>
+
+        <DataGrid Grid.Row="1" Style="{StaticResource DenseDataGridStyle}"
+                  ItemsSource="{Binding Deadlines}" SelectedItem="{Binding SelectedDeadline}">
+            <DataGrid.Columns>
+                <DataGridTemplateColumn Header="" Width="14">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <Ellipse Width="10" Height="10"
+                                     Fill="{Binding Converter={StaticResource UrgencyToBrushConverter}}" />
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+                <DataGridTextColumn Header="Matter #" Binding="{Binding Matter.MatterNumber}" Width="130" />
+                <DataGridTextColumn Header="Description" Binding="{Binding Description}" Width="*" />
+                <DataGridTextColumn Header="Nominal Due" Binding="{Binding NominalDueDate, StringFormat=d}" Width="95" />
+                <DataGridTextColumn Header="Effective Due" Binding="{Binding DueDate, StringFormat=d}" Width="95" />
+                <DataGridTextColumn Header="Kind" Binding="{Binding Kind}" Width="70" />
+                <DataGridTemplateColumn Header="Urgency" Width="110">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <Border Style="{StaticResource StatusPillStyle}"
+                                    Background="{Binding Converter={StaticResource UrgencyToBrushConverter}}">
+                                <TextBlock Text="{Binding Converter={StaticResource UrgencyToLabelConverter}}"
+                                           Foreground="White" FontSize="11" FontWeight="SemiBold" />
+                            </Border>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+                <DataGridTextColumn Header="Owner" Binding="{Binding ResponsibleUser}" Width="110" />
+                <DataGridTemplateColumn Header="Actions" Width="180">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <StackPanel Orientation="Horizontal">
+                                <Button Content="Complete" Padding="8,3" Margin="0,0,6,0"
+                                        Style="{StaticResource SecondaryButtonStyle}"
+                                        Command="{Binding DataContext.MarkCompleteCommand,
+                                                  RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                        CommandParameter="{Binding}" />
+                                <Button Content="Extend +30d" Padding="8,3"
+                                        Style="{StaticResource SecondaryButtonStyle}"
+                                        Command="{Binding DataContext.ExtendCommand,
+                                                  RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                        CommandParameter="{Binding}" />
+                            </StackPanel>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+            </DataGrid.Columns>
+        </DataGrid>
+    </Grid>
+</UserControl>

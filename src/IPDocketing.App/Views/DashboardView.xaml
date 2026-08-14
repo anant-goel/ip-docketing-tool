@@ -1,0 +1,80 @@
+<UserControl x:Class="IPDocketing.App.Views.DashboardView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="clr-namespace:IPDocketing.App.ViewModels"
+             d:DataContext="{d:DesignInstance vm:DashboardViewModel}"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008/design"
+             mc:Ignorable="d"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006">
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="28">
+        <StackPanel>
+            <TextBlock Text="Dashboard" Style="{StaticResource PageTitleStyle}" />
+            <TextBlock Text="Portfolio-wide deadline health at a glance." Style="{StaticResource SubtitleStyle}" />
+
+            <UniformGrid Columns="4" Rows="1" Margin="0,0,0,24">
+                <Border Style="{StaticResource CardStyle}" Margin="0,0,12,0">
+                    <StackPanel>
+                        <TextBlock Text="Overdue" Foreground="{StaticResource TextSecondaryBrush}" />
+                        <TextBlock Text="{Binding OverdueCount}" FontSize="32" FontWeight="Bold"
+                                   Foreground="{StaticResource OverdueBrush}" />
+                    </StackPanel>
+                </Border>
+                <Border Style="{StaticResource CardStyle}" Margin="0,0,12,0">
+                    <StackPanel>
+                        <TextBlock Text="Upcoming (14 days)" Foreground="{StaticResource TextSecondaryBrush}" />
+                        <TextBlock Text="{Binding UpcomingCount}" FontSize="32" FontWeight="Bold"
+                                   Foreground="{StaticResource UpcomingBrush}" />
+                    </StackPanel>
+                </Border>
+                <Border Style="{StaticResource CardStyle}" Margin="0,0,12,0">
+                    <StackPanel>
+                        <TextBlock Text="Pending PTO Response" Foreground="{StaticResource TextSecondaryBrush}" />
+                        <TextBlock Text="{Binding PendingCount}" FontSize="32" FontWeight="Bold"
+                                   Foreground="{StaticResource PendingPtoBrush}" />
+                    </StackPanel>
+                </Border>
+                <Border Style="{StaticResource CardStyle}">
+                    <StackPanel>
+                        <TextBlock Text="Completed" Foreground="{StaticResource TextSecondaryBrush}" />
+                        <TextBlock Text="{Binding CompletedCount}" FontSize="32" FontWeight="Bold"
+                                   Foreground="{StaticResource CompletedBrush}" />
+                    </StackPanel>
+                </Border>
+            </UniformGrid>
+
+            <TextBlock Text="Nearest deadlines" FontWeight="SemiBold" FontSize="15" Margin="0,0,0,8" />
+            <Border Style="{StaticResource CardStyle}" Padding="0">
+                <ItemsControl ItemsSource="{Binding TopDeadlines}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Grid Margin="16,10" >
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="12" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="140" />
+                                </Grid.ColumnDefinitions>
+                                <Ellipse Width="10" Height="10" VerticalAlignment="Center"
+                                         Fill="{Binding Converter={StaticResource UrgencyToBrushConverter}}" />
+                                <StackPanel Grid.Column="1" Margin="12,0,0,0">
+                                    <TextBlock Text="{Binding Description}" FontWeight="SemiBold" />
+                                    <TextBlock Text="{Binding Matter.MatterNumber}" FontSize="11"
+                                               Foreground="{StaticResource TextSecondaryBrush}" />
+                                </StackPanel>
+                                <TextBlock Grid.Column="2" Text="{Binding DueDate, StringFormat=d}"
+                                           VerticalAlignment="Center" Margin="0,0,16,0" />
+                                <Border Grid.Column="3" Style="{StaticResource StatusPillStyle}"
+                                        Background="{Binding Converter={StaticResource UrgencyToBrushConverter}}"
+                                        HorizontalAlignment="Right">
+                                    <TextBlock Text="{Binding Converter={StaticResource UrgencyToLabelConverter}}"
+                                               Foreground="White" FontSize="11" FontWeight="SemiBold" />
+                                </Border>
+                            </Grid>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </Border>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

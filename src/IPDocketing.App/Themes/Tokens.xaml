@@ -1,0 +1,57 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- ===================== Surface colors ===================== -->
+    <Color x:Key="BackgroundLightColor">#F3F3F3</Color>
+    <Color x:Key="BackgroundDarkColor">#1B1B2F</Color>
+    <Color x:Key="SurfaceLightColor">#FFFFFF</Color>
+    <Color x:Key="SurfaceDarkColor">#25253A</Color>
+
+    <!-- ===================== Brand / accent ===================== -->
+    <Color x:Key="BrandAccentColor">#0F3460</Color>
+    <!-- Enterprise Cobalt Navy -->
+    <Color x:Key="BrandAccentHoverColor">#2B5AED</Color>
+    <!-- Tech Blue, for hover/active states -->
+
+    <!-- ===================== Urgency / status colors ===================== -->
+    <Color x:Key="OverdueColor">#DC143C</Color>
+    <!-- Crimson Red: hard deadline overdue / 0-2 days -->
+    <Color x:Key="UpcomingColor">#FF8C00</Color>
+    <!-- Amber Orange: upcoming / warning, 3-14 days -->
+    <Color x:Key="PendingPtoColor">#6A5ACD</Color>
+    <!-- Purple / Indigo: pending PTO response -->
+    <Color x:Key="CompletedColor">#2ECC71</Color>
+    <!-- Emerald Green: completed / cleared -->
+
+    <!-- ===================== Brushes ===================== -->
+    <SolidColorBrush x:Key="BackgroundBrush" Color="{StaticResource BackgroundLightColor}" />
+    <SolidColorBrush x:Key="SurfaceBrush" Color="{StaticResource SurfaceLightColor}" />
+    <SolidColorBrush x:Key="BrandAccentBrush" Color="{StaticResource BrandAccentColor}" />
+    <SolidColorBrush x:Key="BrandAccentHoverBrush" Color="{StaticResource BrandAccentHoverColor}" />
+
+    <SolidColorBrush x:Key="OverdueBrush" Color="{StaticResource OverdueColor}" />
+    <SolidColorBrush x:Key="UpcomingBrush" Color="{StaticResource UpcomingColor}" />
+    <SolidColorBrush x:Key="PendingPtoBrush" Color="{StaticResource PendingPtoColor}" />
+    <SolidColorBrush x:Key="CompletedBrush" Color="{StaticResource CompletedColor}" />
+
+    <SolidColorBrush x:Key="TextPrimaryBrush" Color="#1B1B2F" />
+    <SolidColorBrush x:Key="TextSecondaryBrush" Color="#5B5B6B" />
+    <SolidColorBrush x:Key="BorderBrush1" Color="#E1E1E6" />
+    <SolidColorBrush x:Key="NavRailBrush" Color="#161625" />
+    <SolidColorBrush x:Key="NavRailTextBrush" Color="#D8D8E4" />
+
+    <!-- ===================== Typography ===================== -->
+    <FontFamily x:Key="AppFontFamily">Segoe UI Variable, Segoe UI</FontFamily>
+    <FontFamily x:Key="AppFontFamilyDisplay">Segoe UI Variable Display, Segoe UI Semibold</FontFamily>
+
+    <sys:Double xmlns:sys="clr-namespace:System;assembly=mscorlib" x:Key="FontSizeTitle">22</sys:Double>
+    <sys:Double xmlns:sys="clr-namespace:System;assembly=mscorlib" x:Key="FontSizeSubtitle">15</sys:Double>
+    <sys:Double xmlns:sys="clr-namespace:System;assembly=mscorlib" x:Key="FontSizeBody">13</sys:Double>
+    <sys:Double xmlns:sys="clr-namespace:System;assembly=mscorlib" x:Key="FontSizeCaption">11</sys:Double>
+
+    <!-- Compact row height for high-density data grids -->
+    <sys:Double xmlns:sys="clr-namespace:System;assembly=mscorlib" x:Key="DataRowHeight">32</sys:Double>
+
+    <CornerRadius x:Key="CardCornerRadius">8</CornerRadius>
+
+</ResourceDictionary>
