@@ -1,3 +1,4 @@
+using System.IO;
 using IPDocketing.WinUI.Views;
 using Microsoft.UI;
 using Microsoft.UI.Composition.SystemBackdrops;
@@ -14,18 +15,28 @@ namespace IPDocketing.WinUI;
 public sealed partial class MainWindow : Window
 {
     private AppWindow? _appWindow;
+    private readonly DispatcherTimer _clockTimer;
 
     public MainWindow()
     {
         InitializeComponent();
-        Title = "IP Docketing";
+        Title = "IP Docketing - Enterprise Portfolio & Deadline Management by Anant Goel";
 
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(AppTitleBar);
         ConfigureWindow();
         ApplySystemBackdrop();
 
-        DateText.Text = DateTime.Now.ToString("ddd, dd MMM yyyy");
+        _clockTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+        _clockTimer.Tick += (_, _) => UpdateClock();
+        _clockTimer.Start();
+        UpdateClock();
+    }
+
+    private void UpdateClock()
+    {
+        if (DateText is null) return;
+        DateText.Text = DateTime.Now.ToString("ddd, dd MMM yyyy  HH:mm:ss");
     }
 
     private void ConfigureWindow()
@@ -36,24 +47,32 @@ public sealed partial class MainWindow : Window
             var windowId = Win32Interop.GetWindowIdFromWindow(hWnd);
             _appWindow = AppWindow.GetFromWindowId(windowId);
             _appWindow.Resize(new SizeInt32(1420, 900));
-            _appWindow.SetIcon("Assets\\app.ico");
+            _appWindow.Title = "IP Docketing - Enterprise Portfolio & Deadline Management by Anant Goel";
+
+            // Taskbar / title icon — use absolute path next to the EXE
+            var iconPath = Path.Combine(AppContext.BaseDirectory, "Assets", "app.ico");
+            if (!File.Exists(iconPath))
+                iconPath = Path.Combine(AppContext.BaseDirectory, "app.ico");
+            if (File.Exists(iconPath))
+                _appWindow.SetIcon(iconPath);
 
             if (AppWindowTitleBar.IsCustomizationSupported())
             {
+                _appWindow.TitleBar.ExtendsContentIntoTitleBar = true;
                 _appWindow.TitleBar.ButtonBackgroundColor = Colors.Transparent;
                 _appWindow.TitleBar.ButtonInactiveBackgroundColor = Colors.Transparent;
+                _appWindow.TitleBar.ButtonForegroundColor = Colors.White;
             }
         }
         catch
         {
-            // Window sizing and icon decoration are non-critical.
+            // Non-critical chrome setup
         }
     }
 
     /// <summary>
-    /// Mica is the durable window foundation recommended for long-lived WinUI apps.
-    /// Windows 10 falls back to Desktop Acrylic; unsupported/policy-disabled devices
-    /// still receive an explicit readable solid background.
+    /// Prefer Desktop Acrylic for liquid-glass blur of the desktop (reference look).
+    /// Fall back to Mica Alt, then solid.
     /// </summary>
     private void ApplySystemBackdrop()
     {
@@ -61,22 +80,22 @@ public sealed partial class MainWindow : Window
 
         try
         {
-            if (MicaController.IsSupported())
+            if (DesktopAcrylicController.IsSupported())
             {
-                SystemBackdrop = new MicaBackdrop { Kind = MicaKind.BaseAlt };
+                SystemBackdrop = new DesktopAcrylicBackdrop();
                 RootGrid.Background = new SolidColorBrush(Colors.Transparent);
                 return;
             }
 
-            if (DesktopAcrylicController.IsSupported())
+            if (MicaController.IsSupported())
             {
-                SystemBackdrop = new DesktopAcrylicBackdrop();
+                SystemBackdrop = new MicaBackdrop { Kind = MicaKind.BaseAlt };
                 RootGrid.Background = new SolidColorBrush(Colors.Transparent);
             }
         }
         catch
         {
-            // The solid brush remains visible when composition is unavailable.
+            // Solid remains
         }
     }
 

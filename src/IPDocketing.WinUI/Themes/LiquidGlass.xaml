@@ -16,12 +16,12 @@
             <SolidColorBrush x:Key="GlassPanelFallbackBrush" Color="#E6141925" />
             <AcrylicBrush x:Key="GlassPanelBrush"
                           TintColor="#FF111827"
-                          TintOpacity="0.64"
+                          TintOpacity="0.42"
                           TintLuminosityOpacity="0.72"
                           FallbackColor="#E6141925" />
             <AcrylicBrush x:Key="GlassCardBrush"
                           TintColor="#FF172033"
-                          TintOpacity="0.48"
+                          TintOpacity="0.32"
                           TintLuminosityOpacity="0.76"
                           FallbackColor="#E6192233" />
         </ResourceDictionary>
@@ -37,12 +37,12 @@
             <SolidColorBrush x:Key="GlassPanelFallbackBrush" Color="#EAF7F9FC" />
             <AcrylicBrush x:Key="GlassPanelBrush"
                           TintColor="#FFF6F8FC"
-                          TintOpacity="0.70"
+                          TintOpacity="0.50"
                           TintLuminosityOpacity="0.80"
                           FallbackColor="#EAF7F9FC" />
             <AcrylicBrush x:Key="GlassCardBrush"
                           TintColor="#FFFFFFFF"
-                          TintOpacity="0.58"
+                          TintOpacity="0.40"
                           TintLuminosityOpacity="0.82"
                           FallbackColor="#EDF8FAFD" />
         </ResourceDictionary>

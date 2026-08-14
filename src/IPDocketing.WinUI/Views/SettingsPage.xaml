@@ -5,43 +5,113 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     Background="Transparent">
 
-    <ScrollViewer Padding="28">
-        <StackPanel Spacing="16">
+    <ScrollViewer Padding="28,20,28,40">
+        <StackPanel Spacing="14" MaxWidth="920" HorizontalAlignment="Left">
             <TextBlock Text="Settings" Style="{StaticResource PageTitleStyle}" />
-            <TextBlock Text="Backups, audit integrity and interface materials."
+            <TextBlock Text="Encrypted backups, API credentials, audit integrity, and materials."
                        Style="{StaticResource SubtitleStyle}" />
 
+            <!-- Backups -->
             <Border Style="{StaticResource GlassCardStyle}">
-                <StackPanel Spacing="12">
-                    <TextBlock Text="Encrypted backups" FontWeight="SemiBold" FontSize="16" />
-                    <TextBlock x:Name="BackupStatusText" TextWrapping="Wrap"
-                               Foreground="{ThemeResource TextSecondaryBrush}" FontSize="12" />
+                <StackPanel Spacing="10">
+                    <TextBlock Text="Encrypted backups" FontWeight="SemiBold" FontSize="16"
+                               Foreground="{ThemeResource TextPrimaryBrush}" />
+                    <TextBlock TextWrapping="Wrap" FontSize="12"
+                               Foreground="{ThemeResource TextSecondaryBrush}"
+                               Text="Automatic encrypted snapshots every minute (DPAPI, Windows-user locked). Older than 4 days are removed. App updates never overwrite %LocalAppData%\IPDocketing." />
+                    <TextBlock x:Name="BackupStatusText" TextWrapping="Wrap" FontSize="12"
+                               Foreground="{ThemeResource TextSecondaryBrush}" />
                     <TextBlock x:Name="BackupFolderText" FontSize="11"
-                               Foreground="{ThemeResource TextSecondaryBrush}" IsTextSelectionEnabled="True" />
+                               Foreground="{ThemeResource TextTertiaryBrush}" IsTextSelectionEnabled="True" />
                     <StackPanel Orientation="Horizontal" Spacing="10">
                         <Button Content="Backup now" Style="{StaticResource LiquidButtonStyle}" Click="BackupNow_Click" />
                         <Button Content="Open backup folder" Style="{StaticResource GlassButtonStyle}" Click="OpenFolder_Click" />
+                        <Button Content="Refresh" Style="{StaticResource GlassButtonStyle}" Click="RefreshBackups_Click" />
                     </StackPanel>
+                    <TextBlock Text="Recent backups" FontWeight="SemiBold" FontSize="13" Margin="0,6,0,0"
+                               Foreground="{ThemeResource TextPrimaryBrush}" />
+                    <ListView x:Name="BackupList" MaxHeight="140" SelectionMode="None"
+                              Background="Transparent" BorderThickness="0" />
                 </StackPanel>
             </Border>
 
+            <!-- API keys -->
+            <Border Style="{StaticResource GlassCardStyle}">
+                <StackPanel Spacing="10">
+                    <TextBlock Text="API keys (encrypted at rest)" FontWeight="SemiBold" FontSize="16"
+                               Foreground="{ThemeResource TextPrimaryBrush}" />
+                    <TextBlock TextWrapping="Wrap" FontSize="12"
+                               Foreground="{ThemeResource TextSecondaryBrush}"
+                               Text="Stored as api-keys.enc under LocalAppData — only your Windows account can decrypt. Values are never written to the audit trail." />
+
+                    <TextBlock Text="USPTO (ODP / TSDR)" FontWeight="SemiBold" FontSize="13" Margin="0,4,0,0"
+                               Foreground="{ThemeResource TextPrimaryBrush}" />
+                    <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="{ThemeResource TextTertiaryBrush}"
+                               Text="Get keys: https://account.uspto.gov → Developer Hub / Open Data Portal → register an application. Docs: https://developer.uspto.gov" />
+                    <TextBox x:Name="UsptoClientIdBox" PlaceholderText="Client ID" Style="{StaticResource GlassTextBoxStyle}" />
+                    <TextBox x:Name="UsptoApiKeyBox" PlaceholderText="API Key" Style="{StaticResource GlassTextBoxStyle}" />
+
+                    <TextBlock Text="EPO OPS" FontWeight="SemiBold" FontSize="13" Margin="0,8,0,0"
+                               Foreground="{ThemeResource TextPrimaryBrush}" />
+                    <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="{ThemeResource TextTertiaryBrush}"
+                               Text="Get keys: https://developers.epo.org → create an app → Consumer Key + Consumer Secret." />
+                    <TextBox x:Name="EpoKeyBox" PlaceholderText="Consumer Key" Style="{StaticResource GlassTextBoxStyle}" />
+                    <TextBox x:Name="EpoSecretBox" PlaceholderText="Consumer Secret" Style="{StaticResource GlassTextBoxStyle}" />
+
+                    <TextBlock Text="WIPO" FontWeight="SemiBold" FontSize="13" Margin="0,8,0,0"
+                               Foreground="{ThemeResource TextPrimaryBrush}" />
+                    <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="{ThemeResource TextTertiaryBrush}"
+                               Text="Get access: https://www.wipo.int/reference/en/ → APIs / contact WIPO for PATENTSCOPE or Global Brand Database." />
+                    <TextBox x:Name="WipoKeyBox" PlaceholderText="API Key" Style="{StaticResource GlassTextBoxStyle}" />
+
+                    <TextBlock Text="OCR provider" FontWeight="SemiBold" FontSize="13" Margin="0,8,0,0"
+                               Foreground="{ThemeResource TextPrimaryBrush}" />
+                    <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="{ThemeResource TextTertiaryBrush}"
+                               Text="Azure AI Vision (portal.azure.com), Google Cloud Vision, AWS Textract, or leave empty for local Tesseract later." />
+                    <ComboBox x:Name="OcrProviderBox" HorizontalAlignment="Stretch"
+                              SelectedIndex="0">
+                        <x:String>None (local / Tesseract)</x:String>
+                        <x:String>Azure AI Vision</x:String>
+                        <x:String>Google Cloud Vision</x:String>
+                        <x:String>AWS Textract</x:String>
+                    </ComboBox>
+                    <TextBox x:Name="OcrKeyBox" PlaceholderText="OCR API Key / Secret" Style="{StaticResource GlassTextBoxStyle}" />
+
+                    <StackPanel Orientation="Horizontal" Spacing="10" Margin="0,6,0,0">
+                        <Button Content="Save API keys" Style="{StaticResource LiquidButtonStyle}" Click="SaveApiKeys_Click" />
+                        <Button Content="Clear keys" Style="{StaticResource GlassButtonStyle}" Click="ClearApiKeys_Click" />
+                    </StackPanel>
+                    <TextBlock x:Name="ApiKeysStatusText" FontSize="12"
+                               Foreground="{ThemeResource TextSecondaryBrush}" TextWrapping="Wrap" />
+                </StackPanel>
+            </Border>
+
+            <!-- Audit -->
             <Border Style="{StaticResource GlassCardStyle}">
                 <StackPanel Spacing="8">
-                    <TextBlock Text="Audit trail" FontWeight="SemiBold" FontSize="16" />
+                    <TextBlock Text="Audit trail" FontWeight="SemiBold" FontSize="16"
+                               Foreground="{ThemeResource TextPrimaryBrush}" />
                     <Button Content="Verify chain integrity" Style="{StaticResource GlassButtonStyle}"
                             HorizontalAlignment="Left" Click="VerifyChain_Click" />
-                    <TextBlock x:Name="ChainStatusText" TextWrapping="Wrap"
-                               Foreground="{ThemeResource TextSecondaryBrush}" FontSize="12" />
+                    <TextBlock x:Name="ChainStatusText" TextWrapping="Wrap" FontSize="12"
+                               Foreground="{ThemeResource TextSecondaryBrush}" />
                 </StackPanel>
             </Border>
 
+            <!-- Material -->
             <Border Style="{StaticResource GlassCardStyle}">
-                <StackPanel Spacing="8">
-                    <TextBlock Text="Material and accessibility" FontWeight="SemiBold" FontSize="16" />
-                    <TextBlock TextWrapping="Wrap" Foreground="{ThemeResource TextSecondaryBrush}"
-                               Text="Mica forms the window backdrop. Acrylic is limited to supporting surfaces and automatically becomes a solid, readable color when transparency, battery, hardware or high-contrast policy requires it." />
+                <StackPanel Spacing="6">
+                    <TextBlock Text="Material and accessibility" FontWeight="SemiBold" FontSize="16"
+                               Foreground="{ThemeResource TextPrimaryBrush}" />
+                    <TextBlock TextWrapping="Wrap" FontSize="12"
+                               Foreground="{ThemeResource TextSecondaryBrush}"
+                               Text="Desktop Acrylic is preferred for liquid-glass blur of the desktop. Mica Alt is used when Acrylic is unavailable. The system may switch to a solid color under battery saver, transparency-off, or high-contrast policy." />
                 </StackPanel>
             </Border>
+
+            <TextBlock Text="Developed by Anant Goel · IP Docketing"
+                       FontSize="12" Margin="4,8,0,0"
+                       Foreground="{ThemeResource TextTertiaryBrush}" />
         </StackPanel>
     </ScrollViewer>
 </Page>

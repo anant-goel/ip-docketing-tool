@@ -33,6 +33,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Content Include="Assets\app.ico" />
+    <Content Include="Assets\app.ico">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
 </Project>
