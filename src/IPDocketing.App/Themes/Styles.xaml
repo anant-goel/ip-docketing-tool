@@ -32,7 +32,7 @@
                             <Setter TargetName="Bd" Property="Background" Value="#2A2A42" />
                         </Trigger>
                         <Trigger Property="Tag" Value="Active">
-                            <Setter TargetName="Bd" Property="Background" Value="{StaticResource BrandAccentColor}" />
+                            <Setter TargetName="Bd" Property="Background" Value="{StaticResource BrandAccentBrush}" />
                             <Setter Property="Foreground" Value="White" />
                         </Trigger>
                     </ControlTemplate.Triggers>
