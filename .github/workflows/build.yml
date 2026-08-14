@@ -16,10 +16,16 @@ on:
           - "Release"
           - "Debug"
       create_release:
-        description: "Attach the built .exe to a GitHub Release for this run"
+        description: "Attach the built .zip to a GitHub Release for this run"
         required: true
         type: boolean
         default: false
+
+# Required so softprops/action-gh-release can create a release with the
+# default GITHUB_TOKEN. Without this, the token is read-only and release
+# creation fails with a 403 "Resource not accessible by integration".
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -53,11 +59,16 @@ jobs:
           -p:EnableCompressionInSingleFile=true
           -o publish
 
-      - name: Upload build artifact
+      - name: Zip publish output into a single archive
+        shell: pwsh
+        run: |
+          Compress-Archive -Path publish\* -DestinationPath IPDocketing-win-x64.zip -Force
+
+      - name: Upload build artifact (single zip)
         uses: actions/upload-artifact@v4
         with:
           name: IPDocketing-win-x64
-          path: publish/**
+          path: IPDocketing-win-x64.zip
           if-no-files-found: error
 
       - name: Create GitHub Release (optional)
@@ -66,6 +77,6 @@ jobs:
         with:
           tag_name: manual-run-${{ github.run_number }}
           name: "Manual build #${{ github.run_number }}"
-          files: publish/IPDocketing.exe
+          files: IPDocketing-win-x64.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

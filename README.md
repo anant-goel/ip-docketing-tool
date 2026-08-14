@@ -82,14 +82,20 @@ so the dashboard isn't empty.
    **"Build Windows App"** -> click **"Run workflow"**. You'll get two
    options before it starts:
    - **configuration**: `Release` (default) or `Debug`
-   - **create_release**: check this to have the built `.exe` attached to a
+   - **create_release**: check this to have the built zip attached to a
      GitHub Release immediately
 3. The workflow then:
    - Restores and builds the app on `windows-latest`.
-   - Publishes a **self-contained, single-file** `IPDocketing.exe` for
-     `win-x64` (no .NET runtime install needed on the target machine).
-   - Uploads it as a build artifact (`IPDocketing-win-x64`) you can download
-     from the Actions run summary page.
+   - Publishes a **self-contained** `IPDocketing.exe` for `win-x64` (no
+     .NET runtime install needed on the target machine).
+   - Zips the entire publish output into a single `IPDocketing-win-x64.zip`
+     and uploads *that one zip* as the build artifact - the Actions run
+     summary page gives you one file to download, not a folder of loose
+     files.
+   - The workflow has `permissions: contents: write` set, which is required
+     for the optional Release-creation step to work with the default
+     `GITHUB_TOKEN` (without it, release creation fails with a 403
+     "Resource not accessible by integration").
 
 If you'd rather it also build automatically on push/PR/tag later, add the
 relevant triggers back under `on:` in `.github/workflows/build.yml`.
