@@ -1,7 +1,14 @@
 using System.Globalization;
 using System.Windows.Data;
-using System.Windows.Media;
 using IPDocketing.Core.Models;
+
+// UseWindowsForms is enabled elsewhere in this project (for the tray icon),
+// which pulls System.Drawing into implicit scope alongside WPF's
+// System.Windows.Media. Color, Brushes, and SolidColorBrush exist in both,
+// so they're aliased explicitly to the WPF/Media versions here.
+using Color = System.Windows.Media.Color;
+using Brushes = System.Windows.Media.Brushes;
+using SolidColorBrush = System.Windows.Media.SolidColorBrush;
 
 namespace IPDocketing.App.Converters;
 
