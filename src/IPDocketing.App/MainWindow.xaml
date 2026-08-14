@@ -5,7 +5,8 @@
         xmlns:views="clr-namespace:IPDocketing.App.Views"
         Title="IP Docketing - Enterprise Portfolio &amp; Deadline Management"
         Height="820" Width="1360" MinHeight="600" MinWidth="1000"
-        WindowStartupLocation="CenterScreen">
+        WindowStartupLocation="CenterScreen"
+        Icon="Assets/app.ico">
 
     <Window.DataContext>
         <vm:MainWindowViewModel />

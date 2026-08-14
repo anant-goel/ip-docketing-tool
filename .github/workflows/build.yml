@@ -59,6 +59,36 @@ jobs:
           -p:EnableCompressionInSingleFile=true
           -o publish
 
+      # OPTIONAL - does nothing unless you add the two secrets below.
+      # This is the real fix for the Windows SmartScreen "Windows protected
+      # your PC" / "Unknown publisher" warning: a valid Authenticode
+      # code-signing certificate. Buy one from a CA (DigiCert, Sectigo,
+      # SSL.com, etc. - "OV" builds SmartScreen reputation over downloads/
+      # time, "EV" is trusted immediately but costs more), then add it to
+      # this repo as two Actions secrets:
+      #   CODE_SIGN_PFX_BASE64    - the .pfx certificate file, base64-encoded
+      #                             (PowerShell: [Convert]::ToBase64String(
+      #                             [IO.File]::ReadAllBytes("cert.pfx")) |
+      #                             Set-Clipboard)
+      #   CODE_SIGN_PFX_PASSWORD  - the .pfx's export password
+      # With no secrets configured, this step is skipped and the build still
+      # succeeds (unsigned) exactly as before.
+      - name: Sign executable (optional - skipped unless a certificate secret is set)
+        if: ${{ secrets.CODE_SIGN_PFX_BASE64 != '' }}
+        shell: pwsh
+        run: |
+          $pfxPath = Join-Path $env:RUNNER_TEMP "codesign.pfx"
+          [IO.File]::WriteAllBytes($pfxPath, [Convert]::FromBase64String('${{ secrets.CODE_SIGN_PFX_BASE64 }}'))
+
+          $signtool = Get-ChildItem -Path "C:\Program Files (x86)\Windows Kits\10\bin" -Recurse -Filter "signtool.exe" |
+            Where-Object { $_.FullName -match "x64" } | Select-Object -First 1 -ExpandProperty FullName
+
+          & $signtool sign /f $pfxPath /p '${{ secrets.CODE_SIGN_PFX_PASSWORD }}' `
+            /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 `
+            "publish\IPDocketing.exe"
+
+          Remove-Item $pfxPath -Force
+
       - name: Zip publish output into a single archive
         shell: pwsh
         run: |

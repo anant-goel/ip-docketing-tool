@@ -100,6 +100,58 @@ so the dashboard isn't empty.
 If you'd rather it also build automatically on push/PR/tag later, add the
 relevant triggers back under `on:` in `.github/workflows/build.yml`.
 
+## App icon
+
+The exe, the window titlebar, and the system tray icon all use
+`src/IPDocketing.App/Assets/app.ico` (a multi-resolution icon generated from
+the provided logo). It's wired in three places:
+
+- `IPDocketing.App.csproj` -> `<ApplicationIcon>` sets the icon baked into
+  the compiled `.exe` itself (what File Explorer/taskbar show).
+- `MainWindow.xaml` -> `Icon="Assets/app.ico"` sets the window titlebar icon.
+- `MainWindow.xaml.cs` -> loads the same file as a WPF pack resource for the
+  tray icon (falls back to the generic system icon if that ever fails, so a
+  missing/corrupt icon file can't crash startup).
+
+To swap the logo later, replace `Assets/app.ico` with a new multi-size
+`.ico` (16/24/32/48/64/128/256px) - no other changes needed.
+
+## Windows SmartScreen warning ("Windows protected your PC")
+
+**This is expected for any freshly built, unsigned Windows app - it isn't a
+bug in this project, and there's no code change that removes it.** Every
+`.exe` compiled by `dotnet publish` (from any developer, on any machine) is
+unsigned by default. Microsoft Defender SmartScreen warns on unsigned/
+low-reputation binaries specifically because "Unknown publisher" means
+Windows has no way to verify who built it - the file itself doesn't say
+"IP Docketing built this," so SmartScreen has to assume the worst.
+
+**What actually removes the warning:** an Authenticode code-signing
+certificate from a recognized CA (DigiCert, Sectigo, SSL.com, etc.).
+- An **EV (Extended Validation)** certificate gets instant SmartScreen trust.
+- A standard **OV** certificate is cheaper but has to build up download
+  reputation with Microsoft over time before the warning stops appearing.
+- There is no free way to get instant trust - self-signed certificates do
+  **not** remove the warning (Windows only trusts certs chained to a CA in
+  its trusted root store), they just replace "Unknown publisher" with your
+  own name while SmartScreen still blocks first-run.
+
+**What this project already does to help:**
+- The `.exe` now carries real identity metadata (Product, Company,
+  Description, Version - see the csproj) instead of shipping blank, so at
+  least right-click -> Properties -> Details shows a real app name.
+- The workflow has a ready-to-use, **optional** signing step
+  (`Sign executable`) that does nothing until you add two secrets to the
+  repo - see the comment block above that step in
+  `.github/workflows/build.yml` for exactly what to buy and how to add it.
+  Once a cert is configured, every future build is signed automatically and
+  no further changes are needed.
+
+**Until then, this is safe to bypass on a machine you trust:** the
+"Run anyway" button in the SmartScreen dialog, or right-click the
+downloaded `.exe`/`.zip` -> Properties -> check "Unblock" -> OK before
+extracting/running.
+
 ## Rule engine architecture
 
 The deadline engine follows a deterministic, five-stage-inspired shape:

@@ -12,6 +12,25 @@
     <Platforms>x64</Platforms>
     <SelfContained>true</SelfContained>
     <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
+
+    <!-- Sets the .exe's Win32 icon resource (taskbar, File Explorer, Alt+Tab). -->
+    <ApplicationIcon>Assets\app.ico</ApplicationIcon>
+
+    <!-- Real assembly identity. This does NOT make Windows/SmartScreen trust the
+         app (only an Authenticode code-signing certificate does that - see
+         README "Windows SmartScreen warning" section) but it does replace the
+         blank/generic file properties a plain unsigned build otherwise ships
+         with, so right-click > Properties > Details shows a real app name,
+         publisher, and version instead of nothing. -->
+    <Product>IP Docketing</Product>
+    <AssemblyTitle>IP Docketing</AssemblyTitle>
+    <Company>IP Docketing</Company>
+    <Description>Enterprise IP portfolio and deadline docketing for patents, trademarks, copyrights, and trade secrets.</Description>
+    <Copyright>Copyright (c) 2026</Copyright>
+    <Version>1.0.0</Version>
+    <AssemblyVersion>1.0.0.0</AssemblyVersion>
+    <FileVersion>1.0.0.0</FileVersion>
+    <NeutralLanguage>en-US</NeutralLanguage>
   </PropertyGroup>
 
   <ItemGroup>
@@ -20,6 +39,13 @@
 
   <ItemGroup>
     <ProjectReference Include="..\IPDocketing.Core\IPDocketing.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Embedded as a WPF resource (pack://application:,,,/Assets/app.ico) so
+         it's reliably available both to the Window's titlebar icon and to the
+         tray icon at runtime, even under single-file publish. -->
+    <Resource Include="Assets\app.ico" />
   </ItemGroup>
 
 </Project>

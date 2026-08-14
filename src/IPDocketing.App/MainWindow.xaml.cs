@@ -27,7 +27,7 @@ public partial class MainWindow : Window
     {
         _trayIcon = new NotifyIcon
         {
-            Icon = System.Drawing.SystemIcons.Application,
+            Icon = LoadAppIcon(),
             Visible = true,
             Text = "IP Docketing"
         };
@@ -38,6 +38,28 @@ public partial class MainWindow : Window
             WindowState = WindowState.Normal;
             Activate();
         };
+    }
+
+    /// <summary>
+    /// Loads the app logo (Assets/app.ico, embedded as a WPF resource so it
+    /// survives single-file publish) for the tray icon. Falls back to the
+    /// generic system icon if the resource can't be read for any reason,
+    /// so a missing/corrupt icon file never crashes startup.
+    /// </summary>
+    private static System.Drawing.Icon LoadAppIcon()
+    {
+        try
+        {
+            var info = Application.GetResourceStream(new Uri("pack://application:,,,/Assets/app.ico"));
+            if (info is not null)
+                return new System.Drawing.Icon(info.Stream);
+        }
+        catch
+        {
+            // Fall through to the system default below.
+        }
+
+        return System.Drawing.SystemIcons.Application;
     }
 
     /// <summary>
