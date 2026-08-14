@@ -31,6 +31,12 @@ jobs:
   build:
     runs-on: windows-latest
 
+    # Map the optional signing secret into an env var so the step-level
+    # `if:` can test it. Secrets themselves cannot be referenced directly
+    # inside `if:` conditionals (GitHub Actions restriction).
+    env:
+      CODE_SIGN_PFX_BASE64: ${{ secrets.CODE_SIGN_PFX_BASE64 }}
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -74,16 +80,18 @@ jobs:
       # With no secrets configured, this step is skipped and the build still
       # succeeds (unsigned) exactly as before.
       - name: Sign executable (optional - skipped unless a certificate secret is set)
-        if: ${{ secrets.CODE_SIGN_PFX_BASE64 != '' }}
+        if: ${{ env.CODE_SIGN_PFX_BASE64 != '' }}
         shell: pwsh
+        env:
+          CODE_SIGN_PFX_PASSWORD: ${{ secrets.CODE_SIGN_PFX_PASSWORD }}
         run: |
           $pfxPath = Join-Path $env:RUNNER_TEMP "codesign.pfx"
-          [IO.File]::WriteAllBytes($pfxPath, [Convert]::FromBase64String('${{ secrets.CODE_SIGN_PFX_BASE64 }}'))
+          [IO.File]::WriteAllBytes($pfxPath, [Convert]::FromBase64String($env:CODE_SIGN_PFX_BASE64))
 
           $signtool = Get-ChildItem -Path "C:\Program Files (x86)\Windows Kits\10\bin" -Recurse -Filter "signtool.exe" |
             Where-Object { $_.FullName -match "x64" } | Select-Object -First 1 -ExpandProperty FullName
 
-          & $signtool sign /f $pfxPath /p '${{ secrets.CODE_SIGN_PFX_PASSWORD }}' `
+          & $signtool sign /f $pfxPath /p $env:CODE_SIGN_PFX_PASSWORD `
             /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 `
             "publish\IPDocketing.exe"
 
