@@ -188,6 +188,9 @@
 
                         <VisualStateManager.VisualStateGroups>
                             <VisualStateGroup x:Name="CommonStates">
+                                <VisualStateGroup.Transitions>
+                                    <VisualTransition GeneratedDuration="0:0:0.16" />
+                                </VisualStateGroup.Transitions>
                                 <VisualState x:Name="Normal" />
                                 <VisualState x:Name="PointerOver">
                                     <VisualState.Setters>
@@ -214,6 +217,9 @@
                                 </VisualState>
                             </VisualStateGroup>
                             <VisualStateGroup x:Name="FocusStates">
+                                <VisualStateGroup.Transitions>
+                                    <VisualTransition GeneratedDuration="0:0:0.12" />
+                                </VisualStateGroup.Transitions>
                                 <VisualState x:Name="Focused">
                                     <VisualState.Setters>
                                         <Setter Target="FocusRing.Opacity" Value="1" />

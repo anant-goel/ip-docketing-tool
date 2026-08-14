@@ -5,19 +5,45 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     Background="Transparent">
 
-    <Grid Padding="30,24,30,30">
+    <Grid Padding="30,24,30,30" RowSpacing="12">
         <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
-        <StackPanel Margin="0,0,0,20">
-            <TextBlock Text="Documents" Style="{StaticResource PageTitleStyle}" />
-            <TextBlock Text="Matter files, versions and OCR processing state."
-                       Style="{StaticResource SubtitleStyle}" Margin="0,4,0,0" />
-        </StackPanel>
 
-        <Border Grid.Row="1" Style="{StaticResource GlassCardStyle}" Padding="8">
-            <ListView x:Name="DocumentList" Background="Transparent" SelectionMode="Single">
+        <Grid Margin="0,0,0,8" ColumnSpacing="10">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <StackPanel>
+                <TextBlock Text="Documents" Style="{StaticResource PageTitleStyle}" />
+                <TextBlock Text="Add matter files, review versions and monitor OCR processing."
+                           Style="{StaticResource SubtitleStyle}" Margin="0,4,0,0" />
+            </StackPanel>
+            <Button Grid.Column="1" Content="Add files" Style="{StaticResource LiquidButtonStyle}"
+                    VerticalAlignment="Center" Click="AddFiles_Click" />
+            <Button x:Name="OpenFileButton" Grid.Column="2" Content="Open file"
+                    Style="{StaticResource GlassButtonStyle}" VerticalAlignment="Center"
+                    IsEnabled="False" Click="OpenFile_Click" />
+            <Button Grid.Column="3" Content="Refresh" Style="{StaticResource GlassButtonStyle}"
+                    VerticalAlignment="Center" Click="Refresh_Click" />
+        </Grid>
+
+        <InfoBar x:Name="DocumentInfoBar" Grid.Row="1" IsOpen="False" IsClosable="True" />
+
+        <Border Grid.Row="2" Style="{StaticResource GlassCardStyle}" Padding="8">
+            <Grid>
+                <ListView x:Name="DocumentList" Background="Transparent" SelectionMode="Single"
+                          SelectionChanged="DocumentList_SelectionChanged">
+                    <ListView.Transitions>
+                        <TransitionCollection>
+                            <EntranceThemeTransition FromVerticalOffset="18" />
+                        </TransitionCollection>
+                    </ListView.Transitions>
                 <ListView.ItemTemplate>
                     <DataTemplate>
                         <Grid Padding="12,13" ColumnSpacing="16">
@@ -51,7 +77,24 @@
                         </Grid>
                     </DataTemplate>
                 </ListView.ItemTemplate>
-            </ListView>
+                </ListView>
+
+                <StackPanel x:Name="EmptyState" Visibility="Collapsed"
+                            HorizontalAlignment="Center" VerticalAlignment="Center"
+                            Spacing="10">
+                    <Border Width="64" Height="64" CornerRadius="24"
+                            Background="{ThemeResource GlassInputBrush}"
+                            BorderBrush="{StaticResource LiquidEdgeBrush}" BorderThickness="1">
+                        <FontIcon Glyph="&#xE8A5;" FontSize="25" Foreground="{StaticResource AccentBrush}" />
+                    </Border>
+                    <TextBlock Text="No documents added yet" FontSize="18" FontWeight="SemiBold"
+                               HorizontalAlignment="Center" Foreground="{ThemeResource TextPrimaryBrush}" />
+                    <TextBlock Text="Add PDF, Word or image files to a matter."
+                               Foreground="{ThemeResource TextSecondaryBrush}" />
+                    <Button Content="Add files" Style="{StaticResource LiquidButtonStyle}"
+                            HorizontalAlignment="Center" Click="AddFiles_Click" />
+                </StackPanel>
+            </Grid>
         </Border>
     </Grid>
 </Page>

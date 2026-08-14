@@ -3,7 +3,7 @@
     x:Class="IPDocketing.WinUI.MainWindow"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    Title="IP Docketing">
+    Title="IP Docketing | By Anant Goel">
 
     <Grid x:Name="RootGrid" Background="Transparent">
         <!-- Subtle color fields give the in-app Acrylic something to refract. -->
@@ -40,7 +40,7 @@
                         <TextBlock Text="IP" FontSize="10" FontWeight="Bold"
                                    Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center" />
                     </Border>
-                    <TextBlock Text="IP Docketing" FontFamily="Segoe UI Variable Display"
+                    <TextBlock Text="IP Docketing | By Anant Goel" FontFamily="Segoe UI Variable Display"
                                FontWeight="SemiBold" FontSize="13"
                                Foreground="{ThemeResource TextPrimaryBrush}" VerticalAlignment="Center" />
                     <Border Style="{StaticResource PillBadgeStyle}" Padding="8,3">
@@ -89,6 +89,9 @@
                     <NavigationViewItem Content="Deadlines" Tag="Deadlines">
                         <NavigationViewItem.Icon><FontIcon Glyph="&#xE787;" /></NavigationViewItem.Icon>
                     </NavigationViewItem>
+                    <NavigationViewItem Content="Calendar" Tag="Calendar">
+                        <NavigationViewItem.Icon><FontIcon Glyph="&#xE163;" /></NavigationViewItem.Icon>
+                    </NavigationViewItem>
                     <NavigationViewItem Content="PTO Sync" Tag="PtoSync">
                         <NavigationViewItem.Icon><FontIcon Glyph="&#xE895;" /></NavigationViewItem.Icon>
                     </NavigationViewItem>
@@ -115,6 +118,7 @@
                 <Grid Background="Transparent">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="72" />
+                        <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
                     </Grid.RowDefinitions>
 
@@ -134,20 +138,62 @@
                                     <SymbolIcon Symbol="Find" />
                                 </AutoSuggestBox.QueryIcon>
                             </AutoSuggestBox>
-                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
                                 <StackPanel VerticalAlignment="Center">
                                     <TextBlock x:Name="DateText" HorizontalAlignment="Right" FontSize="12"
                                                Foreground="{ThemeResource TextSecondaryBrush}" />
                                     <TextBlock Text="Database ready" HorizontalAlignment="Right" FontSize="10"
                                                Foreground="{StaticResource SuccessBrush}" />
                                 </StackPanel>
+                                <Button x:Name="NotificationButton"
+                                        Style="{StaticResource GlassButtonStyle}"
+                                        Padding="12,8"
+                                        Click="NotificationButton_Click"
+                                        ToolTipService.ToolTip="Open deadline reminders">
+                                    <Grid ColumnSpacing="7">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <FontIcon Glyph="&#xEA8F;" FontSize="15" />
+                                        <Border x:Name="ReminderBadge"
+                                                Grid.Column="1"
+                                                MinWidth="20"
+                                                Height="20"
+                                                Padding="5,0"
+                                                CornerRadius="10"
+                                                Background="{StaticResource DangerBrush}">
+                                            <TextBlock x:Name="ReminderCountText"
+                                                       Text="0"
+                                                       FontSize="10"
+                                                       FontWeight="Bold"
+                                                       Foreground="White"
+                                                       HorizontalAlignment="Center"
+                                                       VerticalAlignment="Center" />
+                                        </Border>
+                                    </Grid>
+                                </Button>
                                 <Button Content="Quick docket" Style="{StaticResource LiquidButtonStyle}"
                                         Click="QuickDocket_Click" />
                             </StackPanel>
                         </Grid>
                     </Border>
 
-                    <Frame x:Name="ContentFrame" Grid.Row="1" Background="Transparent" />
+                    <InfoBar x:Name="ReminderInfoBar"
+                             Grid.Row="1"
+                             Margin="12,0,16,8"
+                             IsOpen="False"
+                             IsClosable="True"
+                             Severity="Warning"
+                             Title="Deadline reminder">
+                        <InfoBar.ActionButton>
+                            <Button Content="View calendar"
+                                    Style="{StaticResource GlassButtonStyle}"
+                                    Click="ReminderView_Click" />
+                        </InfoBar.ActionButton>
+                    </InfoBar>
+
+                    <Frame x:Name="ContentFrame" Grid.Row="2" Background="Transparent" />
                 </Grid>
             </NavigationView>
         </Grid>

@@ -17,6 +17,7 @@ public partial class App : Application
 
     public static string AppDataDirectory { get; private set; } = null!;
     public static string DatabasePath { get; private set; } = null!;
+    public static MainWindow MainWindow { get; private set; } = null!;
 
     private Window? _window;
 
@@ -53,7 +54,8 @@ public partial class App : Application
         RuleEngine = new RuleEngineService(Database, Audit, Calendar);
         Backups = new BackupService(DatabasePath);
 
-        _window = new MainWindow();
+        MainWindow = new MainWindow();
+        _window = MainWindow;
         _window.Closed += (_, _) =>
         {
             try
