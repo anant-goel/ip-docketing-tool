@@ -2,29 +2,31 @@
                      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
     <!-- ============================================================
-         Theme: Midnight Indigo (Dark Mode)
-         Deep, low-glare dark UI for long docketing sessions.
+         Theme: Liquid Glass (Apple-inspired)
+         Deep radial backdrop + translucent surfaces, soft borders,
+         luminous status accents. Classic WPF approximation of
+         backdrop-filter glass (true OS acrylic needs WinUI/Mica).
          ============================================================ -->
 
-    <!-- ===================== Surface colors ===================== -->
-    <Color x:Key="BackgroundLightColor">#F0F2F7</Color>   <!-- kept for reference / future toggle -->
-    <Color x:Key="BackgroundDarkColor">#0B0E18</Color>    <!-- near-black indigo -->
+    <Color x:Key="BackgroundLightColor">#F0F2F7</Color>
+    <Color x:Key="BackgroundDarkColor">#0B0F19</Color>
     <Color x:Key="SurfaceLightColor">#FFFFFF</Color>
-    <Color x:Key="SurfaceDarkColor">#151A2C</Color>       <!-- elevated card surface -->
+    <Color x:Key="SurfaceDarkColor">#151C2E</Color>
 
-    <!-- ===================== Brand / accent ===================== -->
-    <Color x:Key="BrandAccentColor">#5C7CFA</Color>       <!-- soft bright indigo -->
-    <Color x:Key="BrandAccentHoverColor">#748FFC</Color>  <!-- lighter on hover -->
+    <!-- Brand – bright indigo like liquid primary -->
+    <Color x:Key="BrandAccentColor">#3B82F6</Color>
+    <Color x:Key="BrandAccentHoverColor">#60A5FA</Color>
 
-    <!-- ===================== Urgency / status colors ===================== -->
-    <Color x:Key="OverdueColor">#FF6B6B</Color>           <!-- softer red for dark bg -->
-    <Color x:Key="UpcomingColor">#FFA94D</Color>          <!-- warm amber -->
-    <Color x:Key="PendingPtoColor">#9775FA</Color>        <!-- soft violet -->
-    <Color x:Key="CompletedColor">#51CF66</Color>         <!-- soft green -->
+    <!-- Apple-like system status colors -->
+    <Color x:Key="OverdueColor">#FF453A</Color>
+    <Color x:Key="UpcomingColor">#FF9F0A</Color>
+    <Color x:Key="PendingPtoColor">#5E5CE6</Color>
+    <Color x:Key="CompletedColor">#30D158</Color>
 
-    <!-- ===================== Brushes (DARK MODE ACTIVE) ===================== -->
     <SolidColorBrush x:Key="BackgroundBrush" Color="{StaticResource BackgroundDarkColor}" />
-    <SolidColorBrush x:Key="SurfaceBrush" Color="{StaticResource SurfaceDarkColor}" />
+    <!-- Glass surface: slightly lifted panel -->
+    <SolidColorBrush x:Key="SurfaceBrush" Color="#18FFFFFF" />
+    <SolidColorBrush x:Key="SurfaceSolidBrush" Color="#151C2E" />
     <SolidColorBrush x:Key="BrandAccentBrush" Color="{StaticResource BrandAccentColor}" />
     <SolidColorBrush x:Key="BrandAccentHoverBrush" Color="{StaticResource BrandAccentHoverColor}" />
 
@@ -33,34 +35,34 @@
     <SolidColorBrush x:Key="PendingPtoBrush" Color="{StaticResource PendingPtoColor}" />
     <SolidColorBrush x:Key="CompletedBrush" Color="{StaticResource CompletedColor}" />
 
-    <!-- Text (light on dark) -->
-    <SolidColorBrush x:Key="TextPrimaryBrush" Color="#E8EAF2" />
-    <SolidColorBrush x:Key="TextSecondaryBrush" Color="#8B92A8" />
+    <SolidColorBrush x:Key="TextPrimaryBrush" Color="#F5F5F7" />
+    <SolidColorBrush x:Key="TextSecondaryBrush" Color="#99A0B3" />
 
-    <!-- Borders & dividers -->
-    <SolidColorBrush x:Key="BorderBrush1" Color="#2A3148" />
+    <!-- Hairline glass border -->
+    <SolidColorBrush x:Key="BorderBrush1" Color="#26FFFFFF" />
+    <SolidColorBrush x:Key="GlassBorderBrush" Color="#33FFFFFF" />
 
-    <!-- Navigation rail (slightly deeper than content) -->
-    <SolidColorBrush x:Key="NavRailBrush" Color="#080B14" />
-    <SolidColorBrush x:Key="NavRailTextBrush" Color="#A8B0C8" />
-    <SolidColorBrush x:Key="NavRailHoverBrush" Color="#1A2038" />
-    <SolidColorBrush x:Key="NavRailActiveBrush" Color="#5C7CFA" />
+    <!-- Sidebar / chrome -->
+    <SolidColorBrush x:Key="NavRailBrush" Color="#E60E121C" />
+    <SolidColorBrush x:Key="NavRailTextBrush" Color="#A6ADC8" />
+    <SolidColorBrush x:Key="NavRailHoverBrush" Color="#22FFFFFF" />
+    <SolidColorBrush x:Key="NavRailActiveBrush" Color="#30FFFFFF" />
 
-    <!-- Subtle accent for cards / highlights -->
     <SolidColorBrush x:Key="AccentSubtleBrush" Color="#1A2240" />
+    <SolidColorBrush x:Key="HeaderGlassBrush" Color="#990B0F19" />
 
-    <!-- ===================== Typography ===================== -->
     <FontFamily x:Key="AppFontFamily">Segoe UI Variable, Segoe UI</FontFamily>
     <FontFamily x:Key="AppFontFamilyDisplay">Segoe UI Variable Display, Segoe UI Semibold</FontFamily>
 
-    <sys:Double xmlns:sys="clr-namespace:System;assembly=mscorlib" x:Key="FontSizeTitle">22</sys:Double>
-    <sys:Double xmlns:sys="clr-namespace:System;assembly=mscorlib" x:Key="FontSizeSubtitle">15</sys:Double>
+    <sys:Double xmlns:sys="clr-namespace:System;assembly=mscorlib" x:Key="FontSizeTitle">24</sys:Double>
+    <sys:Double xmlns:sys="clr-namespace:System;assembly=mscorlib" x:Key="FontSizeSubtitle">14</sys:Double>
     <sys:Double xmlns:sys="clr-namespace:System;assembly=mscorlib" x:Key="FontSizeBody">13</sys:Double>
     <sys:Double xmlns:sys="clr-namespace:System;assembly=mscorlib" x:Key="FontSizeCaption">11</sys:Double>
 
-    <!-- Compact row height for high-density data grids -->
-    <sys:Double xmlns:sys="clr-namespace:System;assembly=mscorlib" x:Key="DataRowHeight">32</sys:Double>
+    <sys:Double xmlns:sys="clr-namespace:System;assembly=mscorlib" x:Key="DataRowHeight">36</sys:Double>
 
-    <CornerRadius x:Key="CardCornerRadius">10</CornerRadius>
+    <CornerRadius x:Key="CardCornerRadius">16</CornerRadius>
+    <CornerRadius x:Key="PillCornerRadius">999</CornerRadius>
+    <CornerRadius x:Key="NavItemCornerRadius">12</CornerRadius>
 
 </ResourceDictionary>

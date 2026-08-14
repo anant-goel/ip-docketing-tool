@@ -47,22 +47,19 @@ jobs:
           dotnet-version: '8.0.x'
 
       - name: Restore
-        run: dotnet restore src/IPDocketing.App/IPDocketing.App.csproj
+        run: dotnet restore src/IPDocketing.WinUI/IPDocketing.WinUI.csproj
 
       - name: Build (quick verification)
         run: >
-          dotnet build src/IPDocketing.App/IPDocketing.App.csproj
-          -c ${{ inputs.configuration }} --no-restore
+          dotnet build src/IPDocketing.WinUI/IPDocketing.WinUI.csproj
+          -c ${{ inputs.configuration }} -r win-x64 --no-restore
 
-      - name: Publish self-contained win-x64 executable
+      - name: Publish self-contained WinUI 3 app
         run: >
-          dotnet publish src/IPDocketing.App/IPDocketing.App.csproj
+          dotnet publish src/IPDocketing.WinUI/IPDocketing.WinUI.csproj
           -c ${{ inputs.configuration }}
           -r win-x64
           --self-contained true
-          -p:PublishSingleFile=true
-          -p:IncludeNativeLibrariesForSelfExtract=true
-          -p:EnableCompressionInSingleFile=true
           -o publish
 
       # OPTIONAL - does nothing unless you add the two secrets below.

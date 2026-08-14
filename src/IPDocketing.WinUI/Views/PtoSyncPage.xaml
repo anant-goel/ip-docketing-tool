@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="IPDocketing.WinUI.Views.PtoSyncPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Background="Transparent">
+
+    <ScrollViewer Padding="30,24,30,30">
+        <StackPanel Spacing="18">
+            <StackPanel>
+                <TextBlock Text="PTO Sync" Style="{StaticResource PageTitleStyle}" />
+                <TextBlock Text="Connect an office source and review synchronization activity."
+                           Style="{StaticResource SubtitleStyle}" Margin="0,4,0,0" />
+            </StackPanel>
+
+            <Grid ColumnSpacing="18">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="360" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+
+                <Border Style="{StaticResource GlassCardStyle}">
+                    <StackPanel Spacing="14">
+                        <TextBlock Text="Office connection" Style="{StaticResource SectionTitleStyle}" />
+                        <TextBlock Text="Source" FontSize="12" Foreground="{ThemeResource TextSecondaryBrush}" />
+                        <ComboBox x:Name="SourceCombo" HorizontalAlignment="Stretch" />
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <Button Content="Connect" Style="{StaticResource LiquidButtonStyle}" Click="Connect_Click" />
+                            <Button Content="Sync now" Style="{StaticResource GlassButtonStyle}" Click="Sync_Click" />
+                        </StackPanel>
+                        <Border Style="{StaticResource PillBadgeStyle}" HorizontalAlignment="Left">
+                            <TextBlock x:Name="StatusText" Text="Not connected" FontSize="11"
+                                       Foreground="{StaticResource WarningBrush}" />
+                        </Border>
+                    </StackPanel>
+                </Border>
+
+                <Border Grid.Column="1" Style="{StaticResource GlassCardStyle}">
+                    <StackPanel Spacing="12">
+                        <TextBlock Text="Activity" Style="{StaticResource SectionTitleStyle}" />
+                        <ListView x:Name="ActivityList" MinHeight="280" SelectionMode="None"
+                                  Background="Transparent" />
+                    </StackPanel>
+                </Border>
+            </Grid>
+        </StackPanel>
+    </ScrollViewer>
+</Page>

@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="IPDocketing.WinUI.Views.ReportsPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Background="Transparent">
+
+    <ScrollViewer Padding="30,24,30,30">
+        <StackPanel Spacing="18">
+            <StackPanel>
+                <TextBlock Text="Reports" Style="{StaticResource PageTitleStyle}" />
+                <TextBlock Text="Export clean portfolio data for review and reporting."
+                           Style="{StaticResource SubtitleStyle}" Margin="0,4,0,0" />
+            </StackPanel>
+
+            <Grid ColumnSpacing="18">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <Border Style="{StaticResource GlassCardStyle}">
+                    <StackPanel Spacing="12">
+                        <FontIcon Glyph="&#xE9D9;" FontSize="26" Foreground="{StaticResource AccentBrush}"
+                                  HorizontalAlignment="Left" />
+                        <TextBlock Text="Deadline register" Style="{StaticResource SectionTitleStyle}" />
+                        <TextBlock Text="Matter, operative due date, status, kind and owner."
+                                   Foreground="{ThemeResource TextSecondaryBrush}" TextWrapping="Wrap" />
+                        <Button Content="Export CSV" Style="{StaticResource LiquidButtonStyle}"
+                                HorizontalAlignment="Left" Click="ExportDeadlines_Click" />
+                    </StackPanel>
+                </Border>
+                <Border Grid.Column="1" Style="{StaticResource GlassCardStyle}">
+                    <StackPanel Spacing="12">
+                        <FontIcon Glyph="&#xE7C3;" FontSize="26" Foreground="{StaticResource InfoBrush}"
+                                  HorizontalAlignment="Left" />
+                        <TextBlock Text="Matter portfolio" Style="{StaticResource SectionTitleStyle}" />
+                        <TextBlock Text="Client, jurisdiction, type, status and filing date."
+                                   Foreground="{ThemeResource TextSecondaryBrush}" TextWrapping="Wrap" />
+                        <Button Content="Export CSV" Style="{StaticResource GlassButtonStyle}"
+                                HorizontalAlignment="Left" Click="ExportMatters_Click" />
+                    </StackPanel>
+                </Border>
+            </Grid>
+
+            <Border Style="{StaticResource GlassPanelStyle}" Padding="16,12">
+                <TextBlock x:Name="ExportStatusText" Text="Exports are saved to the app's local Exports folder."
+                           Foreground="{ThemeResource TextSecondaryBrush}" TextWrapping="Wrap" />
+            </Border>
+        </StackPanel>
+    </ScrollViewer>
+</Page>

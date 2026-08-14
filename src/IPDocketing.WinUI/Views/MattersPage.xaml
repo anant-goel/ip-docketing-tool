@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="IPDocketing.WinUI.Views.MattersPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Background="Transparent">
+
+    <Grid Padding="30,24,30,30">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <Grid Margin="0,0,0,20">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <StackPanel>
+                <TextBlock Text="Matters" Style="{StaticResource PageTitleStyle}" />
+                <TextBlock Text="Patents, trademarks and connected portfolio families."
+                           Style="{StaticResource SubtitleStyle}" Margin="0,4,0,0" />
+            </StackPanel>
+            <Border Grid.Column="1" Style="{StaticResource PillBadgeStyle}" VerticalAlignment="Center">
+                <TextBlock x:Name="CountText" Foreground="{ThemeResource TextSecondaryBrush}" />
+            </Border>
+        </Grid>
+
+        <Border Grid.Row="1" Style="{StaticResource GlassCardStyle}" Padding="8">
+            <ListView x:Name="MatterList" Background="Transparent" SelectionMode="Single">
+                <ListView.ItemTemplate>
+                    <DataTemplate>
+                        <Grid Padding="12,13" ColumnSpacing="18">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="42" />
+                                <ColumnDefinition Width="160" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="170" />
+                                <ColumnDefinition Width="120" />
+                            </Grid.ColumnDefinitions>
+                            <Border Width="36" Height="36" CornerRadius="12"
+                                    Background="{ThemeResource GlassInputBrush}"
+                                    BorderBrush="{StaticResource LiquidEdgeBrush}" BorderThickness="1">
+                                <FontIcon Glyph="&#xE7C3;" FontSize="15" Foreground="{StaticResource AccentBrush}" />
+                            </Border>
+                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                <TextBlock Text="{Binding Number}" FontWeight="SemiBold"
+                                           Foreground="{ThemeResource TextPrimaryBrush}" />
+                                <TextBlock Text="{Binding Type}" FontSize="11"
+                                           Foreground="{ThemeResource TextTertiaryBrush}" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="2" VerticalAlignment="Center">
+                                <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"
+                                           Foreground="{ThemeResource TextPrimaryBrush}" />
+                                <TextBlock Text="{Binding Client}" FontSize="12" TextTrimming="CharacterEllipsis"
+                                           Foreground="{ThemeResource TextSecondaryBrush}" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="3" VerticalAlignment="Center">
+                                <TextBlock Text="{Binding Country}" Foreground="{ThemeResource TextPrimaryBrush}" />
+                                <TextBlock Text="{Binding FilingDate}" FontSize="11"
+                                           Foreground="{ThemeResource TextTertiaryBrush}" />
+                            </StackPanel>
+                            <Border Grid.Column="4" Style="{StaticResource PillBadgeStyle}"
+                                    HorizontalAlignment="Right" VerticalAlignment="Center">
+                                <TextBlock Text="{Binding Status}" FontSize="11" FontWeight="SemiBold"
+                                           Foreground="{StaticResource AccentBrush}" />
+                            </Border>
+                        </Grid>
+                    </DataTemplate>
+                </ListView.ItemTemplate>
+            </ListView>
+        </Border>
+    </Grid>
+</Page>

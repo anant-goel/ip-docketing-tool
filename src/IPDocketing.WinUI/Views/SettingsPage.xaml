@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="IPDocketing.WinUI.Views.SettingsPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Background="Transparent">
+
+    <ScrollViewer Padding="28">
+        <StackPanel Spacing="16">
+            <TextBlock Text="Settings" Style="{StaticResource PageTitleStyle}" />
+            <TextBlock Text="Backups, audit integrity and interface materials."
+                       Style="{StaticResource SubtitleStyle}" />
+
+            <Border Style="{StaticResource GlassCardStyle}">
+                <StackPanel Spacing="12">
+                    <TextBlock Text="Encrypted backups" FontWeight="SemiBold" FontSize="16" />
+                    <TextBlock x:Name="BackupStatusText" TextWrapping="Wrap"
+                               Foreground="{ThemeResource TextSecondaryBrush}" FontSize="12" />
+                    <TextBlock x:Name="BackupFolderText" FontSize="11"
+                               Foreground="{ThemeResource TextSecondaryBrush}" IsTextSelectionEnabled="True" />
+                    <StackPanel Orientation="Horizontal" Spacing="10">
+                        <Button Content="Backup now" Style="{StaticResource LiquidButtonStyle}" Click="BackupNow_Click" />
+                        <Button Content="Open backup folder" Style="{StaticResource GlassButtonStyle}" Click="OpenFolder_Click" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <Border Style="{StaticResource GlassCardStyle}">
+                <StackPanel Spacing="8">
+                    <TextBlock Text="Audit trail" FontWeight="SemiBold" FontSize="16" />
+                    <Button Content="Verify chain integrity" Style="{StaticResource GlassButtonStyle}"
+                            HorizontalAlignment="Left" Click="VerifyChain_Click" />
+                    <TextBlock x:Name="ChainStatusText" TextWrapping="Wrap"
+                               Foreground="{ThemeResource TextSecondaryBrush}" FontSize="12" />
+                </StackPanel>
+            </Border>
+
+            <Border Style="{StaticResource GlassCardStyle}">
+                <StackPanel Spacing="8">
+                    <TextBlock Text="Material and accessibility" FontWeight="SemiBold" FontSize="16" />
+                    <TextBlock TextWrapping="Wrap" Foreground="{ThemeResource TextSecondaryBrush}"
+                               Text="Mica forms the window backdrop. Acrylic is limited to supporting surfaces and automatically becomes a solid, readable color when transparency, battery, hardware or high-contrast policy requires it." />
+                </StackPanel>
+            </Border>
+        </StackPanel>
+    </ScrollViewer>
+</Page>

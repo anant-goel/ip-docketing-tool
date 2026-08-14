@@ -1,8 +1,7 @@
 using System.Windows;
 using System.Windows.Forms;
-using IPDocketing.App.ViewModels;
+using IPDocketing.App.Services;
 using Application = System.Windows.Application;
-using MessageBox = System.Windows.MessageBox;
 
 namespace IPDocketing.App;
 
@@ -13,6 +12,8 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        // Prefer Acrylic (liquid glass blur); falls back to Mica on failure
+        SourceInitialized += (_, _) => SystemBackdrop.TryApply(this, BackdropKind.Acrylic);
         Loaded += MainWindow_Loaded;
         Closing += MainWindow_Closing;
     }
@@ -40,12 +41,6 @@ public partial class MainWindow : Window
         };
     }
 
-    /// <summary>
-    /// Loads the app logo (Assets/app.ico, embedded as a WPF resource so it
-    /// survives single-file publish) for the tray icon. Falls back to the
-    /// generic system icon if the resource can't be read for any reason,
-    /// so a missing/corrupt icon file never crashes startup.
-    /// </summary>
     private static System.Drawing.Icon LoadAppIcon()
     {
         try
@@ -54,20 +49,11 @@ public partial class MainWindow : Window
             if (info is not null)
                 return new System.Drawing.Icon(info.Stream);
         }
-        catch
-        {
-            // Fall through to the system default below.
-        }
+        catch { /* fall through */ }
 
         return System.Drawing.SystemIcons.Application;
     }
 
-    /// <summary>
-    /// Native Windows notification for overdue hard deadlines, shown via the
-    /// tray icon balloon tip (works out-of-the-box without app packaging;
-    /// swap for Microsoft.Toolkit.Uwp.Notifications toast XML if the app is
-    /// later packaged with an AppUserModelID / MSIX identity).
-    /// </summary>
     private void RaiseOverdueToastIfAny()
     {
         var overdue = App.Deadlines.GetOverdue();

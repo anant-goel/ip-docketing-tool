@@ -1,11 +1,11 @@
 using System.IO;
-using System.Windows;
 using IPDocketing.Core.Data;
 using IPDocketing.Core.Services;
+using Microsoft.UI.Xaml;
 
-namespace IPDocketing.App;
+namespace IPDocketing.WinUI;
 
-public partial class App : System.Windows.Application
+public partial class App : Application
 {
     public static AppDbContext Database { get; private set; } = null!;
     public static AuditService Audit { get; private set; } = null!;
@@ -18,59 +18,53 @@ public partial class App : System.Windows.Application
     public static string AppDataDirectory { get; private set; } = null!;
     public static string DatabasePath { get; private set; } = null!;
 
-    protected override void OnStartup(StartupEventArgs e)
-    {
-        base.OnStartup(e);
+    private Window? _window;
 
+    public App()
+    {
+        InitializeComponent();
+        UnhandledException += (_, e) =>
+        {
+            e.Handled = true;
+        };
+    }
+
+    protected override void OnLaunched(LaunchActivatedEventArgs args)
+    {
         AppDataDirectory = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "IPDocketing");
         Directory.CreateDirectory(AppDataDirectory);
         DatabasePath = Path.Combine(AppDataDirectory, "ipdocketing.db");
 
-        // If a prior run left only an encrypted snapshot and no live DB, restore it.
         var sealedDb = Path.Combine(AppDataDirectory, "ipdocketing.db.enc");
         if (!File.Exists(DatabasePath) && File.Exists(sealedDb))
         {
-            try
-            {
-                EncryptionService.DecryptFileTo(sealedDb, DatabasePath);
-            }
-            catch
-            {
-                // Wrong user / corrupted – start fresh; user can restore from Backups
-            }
+            try { EncryptionService.DecryptFileTo(sealedDb, DatabasePath); }
+            catch { /* start fresh */ }
         }
 
         Database = new AppDbContext(DatabasePath);
         SeedData.EnsureSeeded(Database);
-
         Audit = new AuditService(Database);
         Matters = new MatterService(Database, Audit);
         Deadlines = new DeadlineService(Database, Audit);
         Calendar = new HolidayCalendarService();
         RuleEngine = new RuleEngineService(Database, Audit, Calendar);
         Backups = new BackupService(DatabasePath);
-    }
 
-    protected override void OnExit(ExitEventArgs e)
-    {
-        try
+        _window = new MainWindow();
+        _window.Closed += (_, _) =>
         {
-            // Flush a sealed, encrypted copy of the live DB for at-rest protection.
-            if (File.Exists(DatabasePath))
+            try
             {
-                var sealedDb = Path.Combine(AppDataDirectory, "ipdocketing.db.enc");
-                EncryptionService.EncryptFileTo(DatabasePath, sealedDb);
+                if (File.Exists(DatabasePath))
+                    EncryptionService.EncryptFileTo(DatabasePath, sealedDb);
             }
-        }
-        catch
-        {
-            // Non-fatal – backups still exist under Backups\
-        }
-
-        Backups?.Dispose();
-        Database?.Dispose();
-        base.OnExit(e);
+            catch { /* ignore */ }
+            Backups?.Dispose();
+            Database?.Dispose();
+        };
+        _window.Activate();
     }
 }

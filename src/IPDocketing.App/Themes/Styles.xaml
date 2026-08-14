@@ -12,24 +12,27 @@
         <Setter Property="TextElement.Foreground" Value="{StaticResource TextPrimaryBrush}" />
     </Style>
 
-    <!-- Left navigation rail button -->
+    <!-- Liquid glass navigation rail button -->
     <Style x:Key="NavRailButtonStyle" TargetType="Button">
         <Setter Property="Background" Value="Transparent" />
         <Setter Property="Foreground" Value="{StaticResource NavRailTextBrush}" />
         <Setter Property="BorderThickness" Value="0" />
-        <Setter Property="Padding" Value="14,10" />
+        <Setter Property="Padding" Value="14,11" />
         <Setter Property="HorizontalContentAlignment" Value="Left" />
-        <Setter Property="FontSize" Value="{StaticResource FontSizeBody}" />
+        <Setter Property="FontSize" Value="13.5" />
+        <Setter Property="FontWeight" Value="Medium" />
         <Setter Property="Cursor" Value="Hand" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="Button">
-                    <Border x:Name="Bd" Background="{TemplateBinding Background}" CornerRadius="6" Margin="8,2">
+                    <Border x:Name="Bd" Background="{TemplateBinding Background}"
+                            CornerRadius="{StaticResource NavItemCornerRadius}" Margin="8,2">
                         <ContentPresenter Margin="{TemplateBinding Padding}" VerticalAlignment="Center" />
                     </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
                             <Setter TargetName="Bd" Property="Background" Value="{StaticResource NavRailHoverBrush}" />
+                            <Setter Property="Foreground" Value="White" />
                         </Trigger>
                         <Trigger Property="Tag" Value="Active">
                             <Setter TargetName="Bd" Property="Background" Value="{StaticResource NavRailActiveBrush}" />
@@ -41,22 +44,34 @@
         </Setter>
     </Style>
 
-    <!-- Primary action button (Fluent-ish accent) -->
+    <!-- Liquid primary pill button -->
     <Style x:Key="PrimaryButtonStyle" TargetType="Button">
         <Setter Property="Background" Value="{StaticResource BrandAccentBrush}" />
         <Setter Property="Foreground" Value="White" />
         <Setter Property="Padding" Value="16,8" />
-        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="BorderBrush" Value="#4DFFFFFF" />
+        <Setter Property="FontWeight" Value="SemiBold" />
         <Setter Property="Cursor" Value="Hand" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="Button">
-                    <Border Background="{TemplateBinding Background}" CornerRadius="4">
-                        <ContentPresenter Margin="{TemplateBinding Padding}" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    <Border x:Name="Bd" Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="999"
+                            Padding="{TemplateBinding Padding}">
+                        <Border.Effect>
+                            <DropShadowEffect BlurRadius="16" ShadowDepth="4" Opacity="0.35" Color="#1D4ED8" />
+                        </Border.Effect>
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
                     </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
-                            <Setter Property="Background" Value="{StaticResource BrandAccentHoverBrush}" />
+                            <Setter TargetName="Bd" Property="Background" Value="{StaticResource BrandAccentHoverBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsPressed" Value="True">
+                            <Setter TargetName="Bd" Property="Opacity" Value="0.92" />
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
@@ -64,41 +79,46 @@
         </Setter>
     </Style>
 
-    <!-- Secondary / outline button -->
+    <!-- Secondary glass outline button -->
     <Style x:Key="SecondaryButtonStyle" TargetType="Button">
-        <Setter Property="Background" Value="Transparent" />
-        <Setter Property="Foreground" Value="{StaticResource BrandAccentBrush}" />
+        <Setter Property="Background" Value="#14FFFFFF" />
+        <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
         <Setter Property="Padding" Value="14,7" />
         <Setter Property="BorderThickness" Value="1" />
-        <Setter Property="BorderBrush" Value="{StaticResource BrandAccentBrush}" />
+        <Setter Property="BorderBrush" Value="{StaticResource GlassBorderBrush}" />
         <Setter Property="Cursor" Value="Hand" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="Button">
                     <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
-                            BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="4">
-                        <ContentPresenter Margin="{TemplateBinding Padding}" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                            BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="999"
+                            Padding="{TemplateBinding Padding}">
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
                     </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter Property="Background" Value="#22FFFFFF" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
                 </ControlTemplate>
             </Setter.Value>
         </Setter>
     </Style>
 
-    <!-- KPI / summary card on the dashboard -->
+    <!-- Liquid glass card -->
     <Style x:Key="CardStyle" TargetType="Border">
-        <Setter Property="Background" Value="{StaticResource SurfaceBrush}" />
+        <Setter Property="Background" Value="#14FFFFFF" />
         <Setter Property="CornerRadius" Value="{StaticResource CardCornerRadius}" />
-        <Setter Property="Padding" Value="18" />
-        <Setter Property="BorderBrush" Value="{StaticResource BorderBrush1}" />
+        <Setter Property="Padding" Value="22" />
+        <Setter Property="BorderBrush" Value="{StaticResource GlassBorderBrush}" />
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="Effect">
             <Setter.Value>
-                <DropShadowEffect BlurRadius="16" ShadowDepth="2" Opacity="0.10" Color="#1A1B26" />
+                <DropShadowEffect BlurRadius="28" ShadowDepth="8" Opacity="0.28" Color="#000000" />
             </Setter.Value>
         </Setter>
     </Style>
 
-    <!-- Section / page heading -->
     <Style x:Key="PageTitleStyle" TargetType="TextBlock">
         <Setter Property="FontFamily" Value="{StaticResource AppFontFamilyDisplay}" />
         <Setter Property="FontSize" Value="{StaticResource FontSizeTitle}" />
@@ -110,32 +130,57 @@
     <Style x:Key="SubtitleStyle" TargetType="TextBlock">
         <Setter Property="FontSize" Value="{StaticResource FontSizeSubtitle}" />
         <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}" />
-        <Setter Property="Margin" Value="0,0,0,16" />
+        <Setter Property="Margin" Value="0,0,0,20" />
     </Style>
 
-    <!-- High-density DataGrid, compact rows -->
+    <!-- Dense data grid on glass -->
     <Style x:Key="DenseDataGridStyle" TargetType="DataGrid">
         <Setter Property="AutoGenerateColumns" Value="False" />
         <Setter Property="CanUserAddRows" Value="False" />
         <Setter Property="CanUserDeleteRows" Value="False" />
         <Setter Property="RowHeight" Value="{StaticResource DataRowHeight}" />
         <Setter Property="GridLinesVisibility" Value="Horizontal" />
-        <Setter Property="HorizontalGridLinesBrush" Value="{StaticResource BorderBrush1}" />
+        <Setter Property="HorizontalGridLinesBrush" Value="#14FFFFFF" />
         <Setter Property="HeadersVisibility" Value="Column" />
-        <Setter Property="BorderThickness" Value="1" />
-        <Setter Property="BorderBrush" Value="{StaticResource BorderBrush1}" />
-        <Setter Property="Background" Value="{StaticResource SurfaceBrush}" />
-        <Setter Property="RowBackground" Value="{StaticResource SurfaceBrush}" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="RowBackground" Value="Transparent" />
+        <Setter Property="AlternatingRowBackground" Value="#0AFFFFFF" />
         <Setter Property="FontSize" Value="{StaticResource FontSizeBody}" />
+        <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
         <Setter Property="SelectionMode" Value="Single" />
         <Setter Property="IsReadOnly" Value="True" />
     </Style>
 
-    <!-- Status pill used for deadline urgency -->
+    <!-- Translucent status pill -->
     <Style x:Key="StatusPillStyle" TargetType="Border">
-        <Setter Property="CornerRadius" Value="10" />
-        <Setter Property="Padding" Value="8,2" />
+        <Setter Property="CornerRadius" Value="999" />
+        <Setter Property="Padding" Value="12,5" />
         <Setter Property="HorizontalAlignment" Value="Left" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="BorderBrush" Value="#40FFFFFF" />
+    </Style>
+
+    <!-- Glass text box (search) -->
+    <Style x:Key="GlassTextBoxStyle" TargetType="TextBox">
+        <Setter Property="Background" Value="#14FFFFFF" />
+        <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+        <Setter Property="CaretBrush" Value="White" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="BorderBrush" Value="{StaticResource GlassBorderBrush}" />
+        <Setter Property="Padding" Value="12,8" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="TextBox">
+                    <Border Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="12">
+                        <ScrollViewer x:Name="PART_ContentHost" Margin="{TemplateBinding Padding}" />
+                    </Border>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
     </Style>
 
 </ResourceDictionary>

@@ -7,56 +7,153 @@
              mc:Ignorable="d"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006">
 
-    <Grid Margin="28">
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="*" />
-        </Grid.RowDefinitions>
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <Grid Margin="28">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
 
-        <TextBlock Grid.Row="0" Text="Settings" Style="{StaticResource PageTitleStyle}" />
-        <TextBlock Grid.Row="0" Margin="0,28,0,16" VerticalAlignment="Bottom"
-                   Text="Role-based access, appearance, and the immutable audit trail."
-                   Style="{StaticResource SubtitleStyle}" />
+            <TextBlock Grid.Row="0" Text="Settings" Style="{StaticResource PageTitleStyle}" />
+            <TextBlock Grid.Row="0" Margin="0,28,0,16" VerticalAlignment="Bottom"
+                       Text="Access, encrypted API credentials, automatic backups, and the immutable audit trail."
+                       Style="{StaticResource SubtitleStyle}" />
 
-        <Border Grid.Row="1" Style="{StaticResource CardStyle}" Margin="0,0,0,16">
-            <StackPanel>
-                <TextBlock Text="Access &amp; appearance" FontWeight="SemiBold" Margin="0,0,0,10" />
-                <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
-                    <TextBlock Text="Current user:" VerticalAlignment="Center" Width="110" />
-                    <TextBox Width="200" Padding="6" Text="{Binding CurrentUser, UpdateSourceTrigger=PropertyChanged}" />
+            <!-- Access & appearance -->
+            <Border Grid.Row="1" Style="{StaticResource CardStyle}" Margin="0,0,0,16">
+                <StackPanel>
+                    <TextBlock Text="Access &amp; appearance" FontWeight="SemiBold" Margin="0,0,0,10" />
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                        <TextBlock Text="Current user:" VerticalAlignment="Center" Width="130" />
+                        <TextBox Width="220" Padding="6" Text="{Binding CurrentUser, UpdateSourceTrigger=PropertyChanged}" />
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                        <TextBlock Text="Role (RBAC):" VerticalAlignment="Center" Width="130" />
+                        <ComboBox Width="240" Padding="6" ItemsSource="{Binding Roles}" SelectedItem="{Binding CurrentRole}" />
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="Dark mode:" VerticalAlignment="Center" Width="130" />
+                        <CheckBox IsChecked="{Binding IsDarkMode}" VerticalAlignment="Center" />
+                    </StackPanel>
                 </StackPanel>
-                <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
-                    <TextBlock Text="Role (RBAC):" VerticalAlignment="Center" Width="110" />
-                    <ComboBox Width="220" Padding="6" ItemsSource="{Binding Roles}" SelectedItem="{Binding CurrentRole}" />
-                </StackPanel>
-                <StackPanel Orientation="Horizontal">
-                    <TextBlock Text="Dark mode:" VerticalAlignment="Center" Width="110" />
-                    <CheckBox IsChecked="{Binding IsDarkMode}" VerticalAlignment="Center" />
-                </StackPanel>
-            </StackPanel>
-        </Border>
+            </Border>
 
-        <Border Grid.Row="2" Style="{StaticResource CardStyle}">
-            <DockPanel>
-                <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,10">
-                    <TextBlock Text="Recent audit trail (immutable, hash-chained)" FontWeight="SemiBold" VerticalAlignment="Center" />
-                    <Button Content="Verify chain integrity" Style="{StaticResource SecondaryButtonStyle}"
-                            Command="{Binding VerifyChainCommand}" Margin="16,0,0,0" Padding="10,4" />
-                    <TextBlock Text="{Binding ChainStatus}" VerticalAlignment="Center" Margin="12,0,0,0"
-                               Foreground="{StaticResource TextSecondaryBrush}" FontSize="11" />
+            <!-- Encrypted backups -->
+            <Border Grid.Row="2" Style="{StaticResource CardStyle}" Margin="0,0,0,16">
+                <StackPanel>
+                    <TextBlock Text="Encrypted backups" FontWeight="SemiBold" Margin="0,0,0,6" />
+                    <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,10"
+                               Text="The database is backed up automatically every minute as a DPAPI-encrypted file (.db.enc) that only your Windows account can open. Backups older than 4 days are deleted to save space. On exit, a sealed encrypted copy is also written. Updating the app EXE does not overwrite this data folder." />
+                    <TextBlock FontSize="11" Margin="0,0,0,4">
+                        <Run Text="Folder: " FontWeight="SemiBold" />
+                        <Run Text="{Binding BackupFolder}" />
+                    </TextBlock>
+                    <TextBlock FontSize="11" Margin="0,0,0,10" Foreground="{StaticResource TextSecondaryBrush}"
+                               Text="{Binding BackupStatus}" />
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                        <Button Content="Backup now" Style="{StaticResource PrimaryButtonStyle}"
+                                Command="{Binding BackupNowCommand}" Padding="14,6" Margin="0,0,10,0" />
+                        <Button Content="Open backup folder" Style="{StaticResource SecondaryButtonStyle}"
+                                Command="{Binding OpenBackupFolderCommand}" Padding="12,6" Margin="0,0,10,0" />
+                        <Button Content="Refresh list" Style="{StaticResource SecondaryButtonStyle}"
+                                Command="{Binding RefreshBackupsCommand}" Padding="12,6" />
+                    </StackPanel>
+                    <TextBlock Text="Recent backups" FontWeight="SemiBold" Margin="0,0,0,6" />
+                    <ListBox ItemsSource="{Binding RecentBackups}" Height="100" BorderThickness="1"
+                             BorderBrush="{StaticResource BorderBrush1}" Background="Transparent"
+                             FontSize="11" FontFamily="Consolas, Cascadia Mono, Segoe UI" />
                 </StackPanel>
-                <DataGrid Style="{StaticResource DenseDataGridStyle}" ItemsSource="{Binding RecentAuditEntries}">
-                    <DataGrid.Columns>
-                        <DataGridTextColumn Header="Time" Binding="{Binding Timestamp, StringFormat=g}" Width="150" />
-                        <DataGridTextColumn Header="User" Binding="{Binding UserName}" Width="110" />
-                        <DataGridTextColumn Header="Action" Binding="{Binding ActionType}" Width="90" />
-                        <DataGridTextColumn Header="Entity" Binding="{Binding EntityType}" Width="90" />
-                        <DataGridTextColumn Header="Details" Binding="{Binding Details}" Width="*" />
-                        <DataGridTextColumn Header="Hash" Binding="{Binding RecordHash}" Width="90" />
-                    </DataGrid.Columns>
-                </DataGrid>
-            </DockPanel>
-        </Border>
-    </Grid>
+            </Border>
+
+            <!-- API Keys -->
+            <Border Grid.Row="3" Style="{StaticResource CardStyle}" Margin="0,0,0,16">
+                <StackPanel>
+                    <TextBlock Text="API keys &amp; external services (encrypted)" FontWeight="SemiBold" Margin="0,0,0,6" />
+                    <TextBlock Text="Stored as a Windows-user-locked encrypted file (api-keys.enc). Values are never written to the audit trail."
+                               Foreground="{StaticResource TextSecondaryBrush}" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,14" />
+
+                    <TextBlock Text="USPTO (ODP / TSDR / PAIR)" FontWeight="SemiBold" Margin="0,0,0,4" />
+                    <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,8"
+                               Text="How to get: https://account.uspto.gov → Developer Hub / Open Data Portal → register an app. Docs: https://developer.uspto.gov" />
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                        <TextBlock Text="Client ID:" VerticalAlignment="Center" Width="130" />
+                        <TextBox Width="360" Padding="6" Text="{Binding UsptoClientId, UpdateSourceTrigger=PropertyChanged}" />
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,14">
+                        <TextBlock Text="API Key:" VerticalAlignment="Center" Width="130" />
+                        <TextBox Width="360" Padding="6" Text="{Binding UsptoApiKey, UpdateSourceTrigger=PropertyChanged}" />
+                    </StackPanel>
+
+                    <TextBlock Text="EPO OPS (European Patent Office)" FontWeight="SemiBold" Margin="0,0,0,4" />
+                    <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,8"
+                               Text="How to get: https://developers.epo.org → create an app → Consumer Key + Consumer Secret." />
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                        <TextBlock Text="Consumer Key:" VerticalAlignment="Center" Width="130" />
+                        <TextBox Width="360" Padding="6" Text="{Binding EpoConsumerKey, UpdateSourceTrigger=PropertyChanged}" />
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,14">
+                        <TextBlock Text="Consumer Secret:" VerticalAlignment="Center" Width="130" />
+                        <TextBox Width="360" Padding="6" Text="{Binding EpoConsumerSecret, UpdateSourceTrigger=PropertyChanged}" />
+                    </StackPanel>
+
+                    <TextBlock Text="WIPO (PCT / Global Brand Database)" FontWeight="SemiBold" Margin="0,0,0,4" />
+                    <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,8"
+                               Text="How to get: https://www.wipo.int/reference/en/ → APIs / contact WIPO for access." />
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,14">
+                        <TextBlock Text="API Key:" VerticalAlignment="Center" Width="130" />
+                        <TextBox Width="360" Padding="6" Text="{Binding WipoApiKey, UpdateSourceTrigger=PropertyChanged}" />
+                    </StackPanel>
+
+                    <TextBlock Text="OCR (document / PTO notice text)" FontWeight="SemiBold" Margin="0,0,0,4" />
+                    <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,8"
+                               Text="Azure AI Vision (portal.azure.com), Google Cloud Vision, AWS Textract, or None for local Tesseract later." />
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                        <TextBlock Text="Provider:" VerticalAlignment="Center" Width="130" />
+                        <ComboBox Width="280" Padding="6" ItemsSource="{Binding OcrProviders}" SelectedItem="{Binding OcrProvider}" />
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,14">
+                        <TextBlock Text="API Key / Secret:" VerticalAlignment="Center" Width="130" />
+                        <TextBox Width="360" Padding="6" Text="{Binding OcrApiKey, UpdateSourceTrigger=PropertyChanged}" />
+                    </StackPanel>
+
+                    <StackPanel Orientation="Horizontal">
+                        <Button Content="Save API keys" Style="{StaticResource PrimaryButtonStyle}"
+                                Command="{Binding SaveApiKeysCommand}" Padding="14,6" Margin="0,0,10,0" />
+                        <Button Content="Clear all keys" Style="{StaticResource SecondaryButtonStyle}"
+                                Command="{Binding ClearApiKeysCommand}" Padding="12,6" />
+                        <TextBlock Text="{Binding ApiKeysStatus}" VerticalAlignment="Center" Margin="14,0,0,0"
+                                   Foreground="{StaticResource TextSecondaryBrush}" FontSize="11" TextWrapping="Wrap" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- Audit trail -->
+            <Border Grid.Row="4" Style="{StaticResource CardStyle}" MinHeight="220">
+                <DockPanel>
+                    <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,10">
+                        <TextBlock Text="Recent audit trail (immutable, hash-chained)" FontWeight="SemiBold" VerticalAlignment="Center" />
+                        <Button Content="Verify chain integrity" Style="{StaticResource SecondaryButtonStyle}"
+                                Command="{Binding VerifyChainCommand}" Margin="16,0,0,0" Padding="10,4" />
+                        <TextBlock Text="{Binding ChainStatus}" VerticalAlignment="Center" Margin="12,0,0,0"
+                                   Foreground="{StaticResource TextSecondaryBrush}" FontSize="11" TextWrapping="Wrap" />
+                    </StackPanel>
+                    <DataGrid Style="{StaticResource DenseDataGridStyle}" ItemsSource="{Binding RecentAuditEntries}"
+                              MinHeight="160">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Time" Binding="{Binding Timestamp, StringFormat=g}" Width="150" />
+                            <DataGridTextColumn Header="User" Binding="{Binding UserName}" Width="110" />
+                            <DataGridTextColumn Header="Action" Binding="{Binding ActionType}" Width="90" />
+                            <DataGridTextColumn Header="Entity" Binding="{Binding EntityType}" Width="90" />
+                            <DataGridTextColumn Header="Details" Binding="{Binding Details}" Width="*" />
+                            <DataGridTextColumn Header="Hash" Binding="{Binding RecordHash}" Width="90" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </DockPanel>
+            </Border>
+        </Grid>
+    </ScrollViewer>
 </UserControl>
