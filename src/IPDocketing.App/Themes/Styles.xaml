@@ -44,33 +44,74 @@
         </Setter>
     </Style>
 
-    <!-- Liquid primary pill button -->
+    <!-- Liquid glass primary button — rounded-square (squircle-style), not a pill.
+         CornerRadius 14 matches the WinUI LiquidGlassButtonBaseStyle so both UIs
+         share one visual language. Scale + glow animate on hover/press so the
+         button feels alive, the way the WinUI template does. -->
     <Style x:Key="PrimaryButtonStyle" TargetType="Button">
         <Setter Property="Background" Value="{StaticResource BrandAccentBrush}" />
         <Setter Property="Foreground" Value="White" />
-        <Setter Property="Padding" Value="16,8" />
+        <Setter Property="Padding" Value="18,9" />
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="BorderBrush" Value="#4DFFFFFF" />
         <Setter Property="FontWeight" Value="SemiBold" />
         <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="RenderTransformOrigin" Value="0.5,0.5" />
+        <Setter Property="RenderTransform">
+            <Setter.Value>
+                <ScaleTransform x:Name="Scale" ScaleX="1" ScaleY="1" />
+            </Setter.Value>
+        </Setter>
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="Button">
-                    <Border x:Name="Bd" Background="{TemplateBinding Background}"
-                            BorderBrush="{TemplateBinding BorderBrush}"
-                            BorderThickness="{TemplateBinding BorderThickness}"
-                            CornerRadius="999"
-                            Padding="{TemplateBinding Padding}">
-                        <Border.Effect>
-                            <DropShadowEffect BlurRadius="16" ShadowDepth="4" Opacity="0.35" Color="#1D4ED8" />
-                        </Border.Effect>
-                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
-                    </Border>
+                    <Grid RenderTransformOrigin="0.5,0.5">
+                        <Grid.RenderTransform>
+                            <ScaleTransform x:Name="ButtonScale" ScaleX="1" ScaleY="1" />
+                        </Grid.RenderTransform>
+                        <Border x:Name="Glow" Margin="-3" Background="#4D3F70D9" CornerRadius="16" Opacity="0" />
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="14"
+                                Padding="{TemplateBinding Padding}">
+                            <Border.Effect>
+                                <DropShadowEffect BlurRadius="16" ShadowDepth="4" Opacity="0.35" Color="#1D4ED8" />
+                            </Border.Effect>
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                    </Grid>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
+                            <Trigger.EnterActions>
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="ButtonScale" Storyboard.TargetProperty="ScaleX" To="1.03" Duration="0:0:0.12" />
+                                        <DoubleAnimation Storyboard.TargetName="ButtonScale" Storyboard.TargetProperty="ScaleY" To="1.03" Duration="0:0:0.12" />
+                                        <DoubleAnimation Storyboard.TargetName="Glow" Storyboard.TargetProperty="Opacity" To="0.5" Duration="0:0:0.12" />
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </Trigger.EnterActions>
+                            <Trigger.ExitActions>
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="ButtonScale" Storyboard.TargetProperty="ScaleX" To="1" Duration="0:0:0.12" />
+                                        <DoubleAnimation Storyboard.TargetName="ButtonScale" Storyboard.TargetProperty="ScaleY" To="1" Duration="0:0:0.12" />
+                                        <DoubleAnimation Storyboard.TargetName="Glow" Storyboard.TargetProperty="Opacity" To="0" Duration="0:0:0.12" />
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </Trigger.ExitActions>
                             <Setter TargetName="Bd" Property="Background" Value="{StaticResource BrandAccentHoverBrush}" />
                         </Trigger>
                         <Trigger Property="IsPressed" Value="True">
+                            <Trigger.EnterActions>
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="ButtonScale" Storyboard.TargetProperty="ScaleX" To="0.97" Duration="0:0:0.08" />
+                                        <DoubleAnimation Storyboard.TargetName="ButtonScale" Storyboard.TargetProperty="ScaleY" To="0.97" Duration="0:0:0.08" />
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </Trigger.EnterActions>
                             <Setter TargetName="Bd" Property="Opacity" Value="0.92" />
                         </Trigger>
                     </ControlTemplate.Triggers>
@@ -79,25 +120,51 @@
         </Setter>
     </Style>
 
-    <!-- Secondary glass outline button -->
+    <!-- Secondary glass outline button — same rounded-square shape and hover/press
+         animation as PrimaryButtonStyle, just with a translucent fill instead of
+         the accent color. -->
     <Style x:Key="SecondaryButtonStyle" TargetType="Button">
         <Setter Property="Background" Value="#14FFFFFF" />
         <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
-        <Setter Property="Padding" Value="14,7" />
+        <Setter Property="Padding" Value="16,8" />
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="BorderBrush" Value="{StaticResource GlassBorderBrush}" />
         <Setter Property="Cursor" Value="Hand" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="Button">
-                    <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
-                            BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="999"
-                            Padding="{TemplateBinding Padding}">
-                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
-                    </Border>
+                    <Grid RenderTransformOrigin="0.5,0.5">
+                        <Grid.RenderTransform>
+                            <ScaleTransform x:Name="ButtonScale" ScaleX="1" ScaleY="1" />
+                        </Grid.RenderTransform>
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="14"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                    </Grid>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
-                            <Setter Property="Background" Value="#22FFFFFF" />
+                            <Trigger.EnterActions>
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="ButtonScale" Storyboard.TargetProperty="ScaleX" To="1.03" Duration="0:0:0.12" />
+                                        <DoubleAnimation Storyboard.TargetName="ButtonScale" Storyboard.TargetProperty="ScaleY" To="1.03" Duration="0:0:0.12" />
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </Trigger.EnterActions>
+                            <Trigger.ExitActions>
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="ButtonScale" Storyboard.TargetProperty="ScaleX" To="1" Duration="0:0:0.12" />
+                                        <DoubleAnimation Storyboard.TargetName="ButtonScale" Storyboard.TargetProperty="ScaleY" To="1" Duration="0:0:0.12" />
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </Trigger.ExitActions>
+                            <Setter TargetName="Bd" Property="Background" Value="#22FFFFFF" />
+                        </Trigger>
+                        <Trigger Property="IsPressed" Value="True">
+                            <Setter TargetName="Bd" Property="Opacity" Value="0.85" />
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>

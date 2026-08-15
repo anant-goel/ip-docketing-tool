@@ -17,6 +17,20 @@ public sealed partial class DashboardPage : Page
         catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"DashboardPage.Load failed: {ex}"); }
     }
 
+    private void AddMatter_Click(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
+    {
+        // Matters is the register that owns "new matter" creation; route there
+        // rather than duplicating that flow on the dashboard.
+        if (Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(this) is Microsoft.UI.Xaml.Controls.Frame frame)
+            frame.Navigate(typeof(MattersPage));
+    }
+
+    private void AssignTeamMember_Click(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
+    {
+        if (Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(this) is Microsoft.UI.Xaml.Controls.Frame frame)
+            frame.Navigate(typeof(MattersPage));
+    }
+
     private void Load()
     {
         var all = App.Deadlines.GetAll().ToList();

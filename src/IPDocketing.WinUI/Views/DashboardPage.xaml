@@ -18,7 +18,17 @@
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
-            <TextBlock Grid.Row="0" Text="Dashboard" Style="{StaticResource PageTitleStyle}" />
+            <Grid Grid.Row="0" ColumnSpacing="14">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="Dashboard" Style="{StaticResource PageTitleStyle}" />
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                    <Button Content="+ Add matter" Style="{StaticResource LiquidButtonStyle}" Click="AddMatter_Click" />
+                    <Button Content="Assign to team member" Style="{StaticResource GlassButtonStyle}" Click="AssignTeamMember_Click" />
+                </StackPanel>
+            </Grid>
             <TextBlock Text="Portfolio health and the deadlines that need attention next."
                        Grid.Row="1" Style="{StaticResource SubtitleStyle}" />
 
