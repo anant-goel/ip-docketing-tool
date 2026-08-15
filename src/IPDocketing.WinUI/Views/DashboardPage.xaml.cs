@@ -10,7 +10,11 @@ public sealed partial class DashboardPage : Page
     public DashboardPage()
     {
         InitializeComponent();
-        Load();
+        // A data-load exception here (constructor time) can otherwise abort page
+        // construction entirely, leaving Frame.Content blank instead of this page's
+        // static XAML chrome. Catching keeps navigation successful either way.
+        try { Load(); }
+        catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"DashboardPage.Load failed: {ex}"); }
     }
 
     private void Load()

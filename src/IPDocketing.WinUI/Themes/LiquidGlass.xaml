@@ -169,7 +169,10 @@
     <Style x:Key="LiquidGlassButtonBaseStyle" TargetType="Button">
         <Setter Property="BorderBrush" Value="{StaticResource LiquidButtonEdgeBrush}" />
         <Setter Property="BorderThickness" Value="1" />
-        <Setter Property="CornerRadius" Value="999" />
+        <!-- Rounded rectangle, not a full pill/oval (was 999). Every button in the app
+             (Quick docket, Add files, Refresh, etc.) shares this base style, so this one
+             value controls the shape everywhere. -->
+        <Setter Property="CornerRadius" Value="14" />
         <Setter Property="Padding" Value="17,9" />
         <Setter Property="MinHeight" Value="38" />
         <Setter Property="FontWeight" Value="SemiBold" />

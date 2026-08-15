@@ -8,7 +8,8 @@ public sealed partial class MattersPage : Page
     public MattersPage()
     {
         InitializeComponent();
-        LoadMatters();
+        try { LoadMatters(); }
+        catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"MattersPage.LoadMatters failed: {ex}"); }
     }
 
     private void LoadMatters()

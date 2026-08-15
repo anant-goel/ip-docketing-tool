@@ -16,7 +16,16 @@ public sealed partial class DocumentsPage : Page
     public DocumentsPage()
     {
         InitializeComponent();
-        LoadDocuments();
+        try
+        {
+            LoadDocuments();
+        }
+        catch (Exception ex)
+        {
+            // Keep the page's chrome (title, buttons, empty card) on screen even if
+            // the initial document query fails, instead of leaving Frame.Content blank.
+            ShowStatus($"Documents could not be loaded: {ex.Message}", InfoBarSeverity.Error);
+        }
     }
 
     private void LoadDocuments()

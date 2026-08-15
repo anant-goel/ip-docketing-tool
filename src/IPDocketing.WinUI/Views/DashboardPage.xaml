@@ -7,8 +7,8 @@
     Background="Transparent">
 
     <ScrollViewer Padding="30,24,30,30"
-                  HorizontalScrollMode="Disabled"
-                  HorizontalScrollBarVisibility="Disabled"
+                  HorizontalScrollMode="Auto"
+                  HorizontalScrollBarVisibility="Auto"
                   HorizontalContentAlignment="Stretch">
         <Grid RowSpacing="8" MaxWidth="1480" HorizontalAlignment="Stretch">
             <Grid.RowDefinitions>

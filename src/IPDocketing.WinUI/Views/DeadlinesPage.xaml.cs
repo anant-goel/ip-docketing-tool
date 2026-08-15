@@ -10,7 +10,8 @@ public sealed partial class DeadlinesPage : Page
     public DeadlinesPage()
     {
         InitializeComponent();
-        LoadDeadlines();
+        try { LoadDeadlines(); }
+        catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"DeadlinesPage.LoadDeadlines failed: {ex}"); }
     }
 
     private void LoadDeadlines()

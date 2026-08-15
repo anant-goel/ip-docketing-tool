@@ -15,8 +15,15 @@ public sealed partial class SettingsPage : Page
     public SettingsPage()
     {
         InitializeComponent();
-        LoadApiKeys();
-        RefreshBackupUi();
+        try
+        {
+            LoadApiKeys();
+            RefreshBackupUi();
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"SettingsPage init failed: {ex}");
+        }
     }
 
     private void RefreshBackupUi()
