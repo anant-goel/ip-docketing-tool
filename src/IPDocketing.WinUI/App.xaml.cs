@@ -100,6 +100,40 @@ public partial class App : Application
             catch { /* start fresh */ }
         }
 
+        // EnsureCreated() (used below, and in SeedData) only builds the schema
+        // the FIRST time a database file doesn't exist - it never alters an
+        // already-existing file's schema. Every model change since this file
+        // was first created (new columns, new tables) would otherwise be
+        // silently missing, causing "no such column" crashes like the
+        // AssignedToId one. Bump SchemaVersion whenever a model changes;
+        // a mismatch means the on-disk file predates that change, so it's
+        // deleted and rebuilt fresh rather than crashing on first query.
+        // This does mean local data doesn't survive a schema change while
+        // the app has no formal EF migrations - acceptable for now, but
+        // worth switching to real migrations before this holds data anyone
+        // depends on keeping.
+        const int schemaVersion = 2;
+        var schemaVersionPath = Path.Combine(AppDataDirectory, "schema-version.txt");
+        var previousVersion = File.Exists(schemaVersionPath)
+            ? int.TryParse(File.ReadAllText(schemaVersionPath).Trim(), out var v) ? v : 0
+            : 0;
+
+        if (previousVersion != schemaVersion && File.Exists(DatabasePath))
+        {
+            try
+            {
+                File.Delete(DatabasePath);
+                if (File.Exists(sealedDb)) File.Delete(sealedDb);
+            }
+            catch
+            {
+                // If we can't delete it, EnsureCreated below will still no-op
+                // against the stale file and the same crash will resurface -
+                // but we tried, and this shouldn't be fatal on its own.
+            }
+        }
+        File.WriteAllText(schemaVersionPath, schemaVersion.ToString());
+
         Database = new AppDbContext(DatabasePath);
         SeedData.EnsureSeeded(Database);
         Audit = new AuditService(Database);
