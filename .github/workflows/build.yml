@@ -61,6 +61,7 @@ jobs:
           -r win-x64
           --self-contained true
           -p:PublishProfile=""
+	  /p:PublishTrimmed=false
           -o publish
 
       # OPTIONAL - does nothing unless you add the two secrets below.
