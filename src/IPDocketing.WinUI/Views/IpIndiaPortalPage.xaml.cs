@@ -48,8 +48,19 @@ public sealed partial class IpIndiaPortalPage : Page
         try
         {
             Directory.CreateDirectory(SessionDataFolder);
-            var environment = await CoreWebView2Environment.CreateAsync((string?)null, SessionDataFolder);
-            await Browser.EnsureCoreWebView2Async(environment);
+            // Setting CreationProperties before first use is the WinUI
+            // XAML control's own documented way to control the user data
+            // folder - the control builds its own CoreWebView2Environment
+            // internally from this, so it works regardless of exactly which
+            // CreateAsync overload shape the resolved WebView2 SDK version
+            // exposes (that overload's parameter names/count aren't stable
+            // across versions, which is what broke the two previous
+            // attempts here).
+            Browser.CreationProperties = new CoreWebView2CreationProperties
+            {
+                UserDataFolder = SessionDataFolder
+            };
+            await Browser.EnsureCoreWebView2Async();
             Browser.CoreWebView2.Navigate(TrademarkSearchUrl);
         }
         catch (Exception ex)
