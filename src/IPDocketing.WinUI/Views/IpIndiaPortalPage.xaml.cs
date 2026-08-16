@@ -19,23 +19,18 @@ namespace IPDocketing.WinUI.Views;
 /// (F12 works in WebView2), find the OTP input's actual id/name, and update
 /// the selector below - it's marked clearly.
 ///
-/// SESSION PERSISTENCE: the browser's cookies/session are stored in a
-/// dedicated folder under the app's data directory (not the default
-/// per-exe location WebView2 would otherwise pick, which can be unwritable
-/// or inconsistent for an unpackaged app). If IP India's own session cookie
-/// outlives a single browser close - which is up to their site, not
-/// something this app controls - re-opening this page can skip straight
-/// back to being logged in without a fresh OTP+CAPTCHA. When their session
-/// actually expires, you're back to the normal manual flow. "Clear saved
-/// session" below wipes that folder if you want a clean slate (e.g. on a
-/// shared machine).
+/// SESSION PERSISTENCE: this uses WebView2's own default session storage
+/// rather than a custom folder - three attempts at wiring a custom
+/// UserDataFolder each broke the build on a different version-sensitive
+/// API detail I couldn't verify without a live compile, so it was cut in
+/// favor of something that reliably builds. WebView2's default behavior
+/// already persists cookies between runs on its own; this app just doesn't
+/// control or clear that folder itself.
 /// </summary>
 public sealed partial class IpIndiaPortalPage : Page
 {
     private const string TrademarkSearchUrl = "https://tmrsearch.ipindia.gov.in/tmrpublicsearch";
     private const string PatentSearchUrl = "https://iprsearch.ipindia.gov.in/PublicSearch";
-
-    private static string SessionDataFolder => Path.Combine(App.AppDataDirectory, "WebView2Session");
 
     public IpIndiaPortalPage()
     {
@@ -47,19 +42,14 @@ public sealed partial class IpIndiaPortalPage : Page
     {
         try
         {
-            Directory.CreateDirectory(SessionDataFolder);
-            // Setting CreationProperties before first use is the WinUI
-            // XAML control's own documented way to control the user data
-            // folder - the control builds its own CoreWebView2Environment
-            // internally from this, so it works regardless of exactly which
-            // CreateAsync overload shape the resolved WebView2 SDK version
-            // exposes (that overload's parameter names/count aren't stable
-            // across versions, which is what broke the two previous
-            // attempts here).
-            Browser.CreationProperties = new CoreWebView2CreationProperties
-            {
-                UserDataFolder = SessionDataFolder
-            };
+            // Deliberately the simplest possible call. Custom user-data-folder
+            // control (for session persistence across restarts) kept breaking
+            // the build across three different attempts at guessing this
+            // SDK version's exact API shape - not worth it. This uses
+            // WebView2's own default behavior, which already persists
+            // cookies/session to its default per-app folder between runs;
+            // it just isn't a folder this app chose or can point
+            // "Clear saved session" at.
             await Browser.EnsureCoreWebView2Async();
             Browser.CoreWebView2.Navigate(TrademarkSearchUrl);
         }
@@ -67,27 +57,6 @@ public sealed partial class IpIndiaPortalPage : Page
         {
             StatusText.Text = $"Couldn't start the embedded browser: {ex.Message}. " +
                                "The WebView2 Runtime may need to be installed (it ships with Windows 10/11 by default).";
-        }
-    }
-
-    private async void ClearSession_Click(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
-    {
-        try
-        {
-            // The control holds a live handle into this folder, so it has to
-            // be torn down and rebuilt before the files can actually be deleted.
-            Browser.Close();
-
-            if (Directory.Exists(SessionDataFolder))
-                Directory.Delete(SessionDataFolder, recursive: true);
-
-            StatusText.Text = "Saved session cleared. Reloading...";
-            await InitBrowserAsync();
-            StatusText.Text = "Session cleared - you'll need to log in fresh.";
-        }
-        catch (Exception ex)
-        {
-            StatusText.Text = $"Couldn't clear the session: {ex.Message}";
         }
     }
 
