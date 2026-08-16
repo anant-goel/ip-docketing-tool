@@ -55,14 +55,7 @@ jobs:
           -c ${{ inputs.configuration }} -r win-x64 --no-restore
 
       - name: Publish self-contained WinUI 3 app
-        run: >
-          dotnet publish src/IPDocketing.WinUI/IPDocketing.WinUI.csproj
-          -c ${{ inputs.configuration }}
-          -r win-x64
-          --self-contained true
-          -p:PublishProfile=""
-	  /p:PublishTrimmed=false
-          -o publish
+        run: dotnet publish src/IPDocketing.WinUI/IPDocketing.WinUI.csproj -c ${{ inputs.configuration }} -r win-x64 --self-contained true -p:PublishTrimmed=false -o publish
 
       # OPTIONAL - does nothing unless you add the two secrets below.
       # This is the real fix for the Windows SmartScreen "Windows protected
