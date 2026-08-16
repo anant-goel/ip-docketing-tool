@@ -26,6 +26,7 @@
             <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
                 <Button Content="Trademark search" Style="{StaticResource GlassButtonStyle}" Click="GoToTrademark_Click" />
                 <Button Content="Patent search (InPASS)" Style="{StaticResource GlassButtonStyle}" Click="GoToPatent_Click" />
+                <Button Content="Clear saved session" Style="{StaticResource GlassButtonStyle}" Click="ClearSession_Click" />
             </StackPanel>
         </Grid>
 

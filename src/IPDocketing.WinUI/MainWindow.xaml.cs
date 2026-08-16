@@ -127,18 +127,26 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private const string ThemeSettingKey = "AppTheme";
-
     /// <summary>
     /// Reads the saved theme preference (Dark / Light / System) and applies
     /// it to the whole window. Defaults to Dark, since Liquid Glass was
     /// designed dark-first — the Light and HighContrast dictionaries exist
     /// in LiquidGlass.xaml too (see ThemeDictionaries there), this just
     /// controls which one is active and remembers the choice.
+    ///
+    /// Uses a plain file in AppDataDirectory rather than
+    /// Windows.Storage.ApplicationData.Current.LocalSettings -
+    /// ApplicationData.Current requires MSIX package identity and throws
+    /// immediately in an unpackaged app (which this is, deliberately -
+    /// WindowsPackageType=None). That was the actual cause of the crash on
+    /// every launch: an unhandled exception right here, in the MainWindow
+    /// constructor, before any window could show.
     /// </summary>
+    private static string ThemeSettingPath => Path.Combine(App.AppDataDirectory, "theme-preference.txt");
+
     private void ApplySavedTheme()
     {
-        var saved = Windows.Storage.ApplicationData.Current.LocalSettings.Values[ThemeSettingKey] as string ?? "Dark";
+        var saved = ReadSavedTheme();
         RootGrid.RequestedTheme = saved switch
         {
             "Light" => ElementTheme.Light,
@@ -151,11 +159,31 @@ public sealed partial class MainWindow : Window
     public void SetTheme(ElementTheme theme, string settingValue)
     {
         RootGrid.RequestedTheme = theme;
-        Windows.Storage.ApplicationData.Current.LocalSettings.Values[ThemeSettingKey] = settingValue;
+        try
+        {
+            Directory.CreateDirectory(App.AppDataDirectory);
+            File.WriteAllText(ThemeSettingPath, settingValue);
+        }
+        catch
+        {
+            // Theme still applies for this session even if the write fails;
+            // it just won't be remembered next launch.
+        }
     }
 
-    public string GetSavedThemeSetting() =>
-        Windows.Storage.ApplicationData.Current.LocalSettings.Values[ThemeSettingKey] as string ?? "Dark";
+    public string GetSavedThemeSetting() => ReadSavedTheme();
+
+    private static string ReadSavedTheme()
+    {
+        try
+        {
+            return File.Exists(ThemeSettingPath) ? File.ReadAllText(ThemeSettingPath).Trim() : "Dark";
+        }
+        catch
+        {
+            return "Dark";
+        }
+    }
 
     private void NavView_Loaded(object sender, RoutedEventArgs e)
     {

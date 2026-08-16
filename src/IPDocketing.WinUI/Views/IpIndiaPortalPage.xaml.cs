@@ -1,4 +1,5 @@
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.Web.WebView2.Core;
 
 namespace IPDocketing.WinUI.Views;
 
@@ -17,11 +18,24 @@ namespace IPDocketing.WinUI.Views;
 /// earlier in this project). Open DevTools in the embedded browser
 /// (F12 works in WebView2), find the OTP input's actual id/name, and update
 /// the selector below - it's marked clearly.
+///
+/// SESSION PERSISTENCE: the browser's cookies/session are stored in a
+/// dedicated folder under the app's data directory (not the default
+/// per-exe location WebView2 would otherwise pick, which can be unwritable
+/// or inconsistent for an unpackaged app). If IP India's own session cookie
+/// outlives a single browser close - which is up to their site, not
+/// something this app controls - re-opening this page can skip straight
+/// back to being logged in without a fresh OTP+CAPTCHA. When their session
+/// actually expires, you're back to the normal manual flow. "Clear saved
+/// session" below wipes that folder if you want a clean slate (e.g. on a
+/// shared machine).
 /// </summary>
 public sealed partial class IpIndiaPortalPage : Page
 {
     private const string TrademarkSearchUrl = "https://tmrsearch.ipindia.gov.in/tmrpublicsearch";
     private const string PatentSearchUrl = "https://iprsearch.ipindia.gov.in/PublicSearch";
+
+    private static string SessionDataFolder => Path.Combine(App.AppDataDirectory, "WebView2Session");
 
     public IpIndiaPortalPage()
     {
@@ -33,13 +47,38 @@ public sealed partial class IpIndiaPortalPage : Page
     {
         try
         {
-            await Browser.EnsureCoreWebView2Async();
+            Directory.CreateDirectory(SessionDataFolder);
+            var environment = await CoreWebView2Environment.CreateAsync(
+                browserExecutableFolder: null,
+                userDataFolder: SessionDataFolder);
+            await Browser.EnsureCoreWebView2Async(environment);
             Browser.CoreWebView2.Navigate(TrademarkSearchUrl);
         }
         catch (Exception ex)
         {
             StatusText.Text = $"Couldn't start the embedded browser: {ex.Message}. " +
                                "The WebView2 Runtime may need to be installed (it ships with Windows 10/11 by default).";
+        }
+    }
+
+    private async void ClearSession_Click(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
+    {
+        try
+        {
+            // The control holds a live handle into this folder, so it has to
+            // be torn down and rebuilt before the files can actually be deleted.
+            Browser.Close();
+
+            if (Directory.Exists(SessionDataFolder))
+                Directory.Delete(SessionDataFolder, recursive: true);
+
+            StatusText.Text = "Saved session cleared. Reloading...";
+            await InitBrowserAsync();
+            StatusText.Text = "Session cleared - you'll need to log in fresh.";
+        }
+        catch (Exception ex)
+        {
+            StatusText.Text = $"Couldn't clear the session: {ex.Message}";
         }
     }
 
