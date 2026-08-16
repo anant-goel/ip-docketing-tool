@@ -60,6 +60,7 @@ jobs:
           -c ${{ inputs.configuration }}
           -r win-x64
           --self-contained true
+          -p:PublishProfile=""
           -o publish
 
       # OPTIONAL - does nothing unless you add the two secrets below.
