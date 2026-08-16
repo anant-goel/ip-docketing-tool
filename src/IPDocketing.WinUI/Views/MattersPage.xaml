@@ -44,7 +44,7 @@
             <TextBox x:Name="ProprietorSearchBox" Grid.Column="1" PlaceholderText="Proprietor" />
             <TextBox x:Name="AttorneySearchBox" Grid.Column="2" PlaceholderText="Attorney" />
             <TextBox x:Name="StateSearchBox" Grid.Column="3" PlaceholderText="State" />
-            <Button Grid.Column="4" Content="Search" Style="{StaticResource SecondaryButtonStyle}" Click="Search_Click" />
+            <Button Grid.Column="4" Content="Search" Style="{StaticResource GlassButtonStyle}" Click="Search_Click" />
         </Grid>
 
         <Border Grid.Row="2" Style="{StaticResource GlassCardStyle}" Padding="8">
@@ -98,9 +98,9 @@
                             <TextBlock Grid.Column="6" Text="{Binding AssignedTo}" VerticalAlignment="Center"
                                        FontSize="12" Foreground="{ThemeResource TextSecondaryBrush}" />
                             <StackPanel Grid.Column="7" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                                <Button Content="Edit" Style="{StaticResource SecondaryButtonStyle}"
+                                <Button Content="Edit" Style="{StaticResource GlassButtonStyle}"
                                         Padding="10,5" Click="EditMatter_Click" Tag="{Binding Id}" />
-                                <Button Content="Delete" Style="{StaticResource SecondaryButtonStyle}"
+                                <Button Content="Delete" Style="{StaticResource GlassButtonStyle}"
                                         Padding="10,5" Click="DeleteMatter_Click" Tag="{Binding Id}" />
                             </StackPanel>
                         </Grid>

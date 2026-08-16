@@ -35,8 +35,9 @@
                                 <ColumnDefinition Width="18" />
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="170" />
-                                <ColumnDefinition Width="120" />
                                 <ColumnDefinition Width="110" />
+                                <ColumnDefinition Width="100" />
+                                <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
                             <Ellipse Width="9" Height="9" Fill="{Binding UrgencyBrush}" VerticalAlignment="Center" />
                             <StackPanel Grid.Column="1" VerticalAlignment="Center">
@@ -53,10 +54,16 @@
                             <TextBlock Grid.Column="3" Text="{Binding Owner}" VerticalAlignment="Center"
                                        Foreground="{ThemeResource TextSecondaryBrush}" />
                             <Border Grid.Column="4" Style="{StaticResource PillBadgeStyle}"
-                                    HorizontalAlignment="Right" VerticalAlignment="Center">
+                                    HorizontalAlignment="Left" VerticalAlignment="Center">
                                 <TextBlock Text="{Binding Urgency}" FontSize="11" FontWeight="SemiBold"
                                            Foreground="{Binding UrgencyBrush}" />
                             </Border>
+                            <StackPanel Grid.Column="5" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                <Button Content="Complete" Style="{StaticResource GlassButtonStyle}"
+                                        Padding="10,5" Click="Complete_Click" Tag="{Binding Id}" />
+                                <Button Content="Delete" Style="{StaticResource GlassButtonStyle}"
+                                        Padding="10,5" Click="Delete_Click" Tag="{Binding Id}" />
+                            </StackPanel>
                         </Grid>
                     </DataTemplate>
                 </ListView.ItemTemplate>

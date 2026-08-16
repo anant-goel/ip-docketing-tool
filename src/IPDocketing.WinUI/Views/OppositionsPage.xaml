@@ -64,9 +64,9 @@
                             <TextBlock Grid.Column="5" Text="{Binding AssignedTo}" VerticalAlignment="Center"
                                        Foreground="{ThemeResource TextSecondaryBrush}" />
                             <StackPanel Grid.Column="6" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                                <Button Content="Edit" Style="{StaticResource SecondaryButtonStyle}"
+                                <Button Content="Edit" Style="{StaticResource GlassButtonStyle}"
                                         Padding="10,5" Click="EditOpposition_Click" Tag="{Binding Id}" />
-                                <Button Content="Delete" Style="{StaticResource SecondaryButtonStyle}"
+                                <Button Content="Delete" Style="{StaticResource GlassButtonStyle}"
                                         Padding="10,5" Click="DeleteOpposition_Click" Tag="{Binding Id}" />
                             </StackPanel>
                         </Grid>

@@ -61,7 +61,7 @@
             </Grid.ColumnDefinitions>
             <TextBlock Text="Watch alerts — marks flagged as similar to your portfolio"
                        Style="{StaticResource SubtitleStyle}" VerticalAlignment="Center" />
-            <Button Grid.Column="1" Content="Run watch on selected issue" Style="{StaticResource SecondaryButtonStyle}"
+            <Button Grid.Column="1" Content="Run watch on selected issue" Style="{StaticResource GlassButtonStyle}"
                     Click="RunWatch_Click" />
         </Grid>
 
@@ -88,7 +88,7 @@
                                 <TextBlock Text="{Binding ScoreLabel}" FontSize="11" FontWeight="SemiBold"
                                            Foreground="{StaticResource AccentBrush}" />
                             </Border>
-                            <Button Grid.Column="3" Content="Dismiss" Style="{StaticResource SecondaryButtonStyle}"
+                            <Button Grid.Column="3" Content="Dismiss" Style="{StaticResource GlassButtonStyle}"
                                     Click="DismissAlert_Click" Tag="{Binding Id}" />
                         </Grid>
                     </DataTemplate>

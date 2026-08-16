@@ -50,8 +50,9 @@
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="44" />
                                 <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="170" />
-                                <ColumnDefinition Width="130" />
+                                <ColumnDefinition Width="150" />
+                                <ColumnDefinition Width="110" />
+                                <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
                             <Border Width="38" Height="38" CornerRadius="12"
                                     Background="{ThemeResource GlassInputBrush}"
@@ -70,10 +71,12 @@
                                            Foreground="{ThemeResource TextTertiaryBrush}" />
                             </StackPanel>
                             <Border Grid.Column="3" Style="{StaticResource PillBadgeStyle}"
-                                    HorizontalAlignment="Right" VerticalAlignment="Center">
+                                    HorizontalAlignment="Left" VerticalAlignment="Center">
                                 <TextBlock Text="{Binding OcrStatus}" FontSize="11" FontWeight="SemiBold"
                                            Foreground="{Binding OcrBrush}" />
                             </Border>
+                            <Button Grid.Column="4" Content="Delete" Style="{StaticResource GlassButtonStyle}"
+                                    Padding="10,5" VerticalAlignment="Center" Click="DeleteDocument_Click" Tag="{Binding Id}" />
                         </Grid>
                     </DataTemplate>
                 </ListView.ItemTemplate>

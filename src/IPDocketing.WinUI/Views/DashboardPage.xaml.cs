@@ -45,6 +45,12 @@ public sealed partial class DashboardPage : Page
         PendingText.Text = pending.Count.ToString();
         CompletedText.Text = completed.Count.ToString();
 
+        OppositionsText.Text = App.Oppositions.GetAll()
+            .Count(o => o.Status != OppositionStatus.Decided && o.Status != OppositionStatus.Withdrawn && o.Status != OppositionStatus.Settled)
+            .ToString();
+        WatchAlertsText.Text = App.Watch.GetAll().Count.ToString();
+        UnassignedText.Text = App.Matters.GetAll().Count(m => m.AssignedToId == null).ToString();
+
         var top = all
             .Where(d => d.Status != DeadlineStatus.Completed && d.Status != DeadlineStatus.Waived)
             .OrderBy(d => d.DueDate)

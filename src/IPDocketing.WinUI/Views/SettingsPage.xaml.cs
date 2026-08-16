@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Linq;
 using System.Text.Json;
 using IPDocketing.Core.Services;
 using Microsoft.UI.Xaml;
@@ -17,6 +18,7 @@ public sealed partial class SettingsPage : Page
         InitializeComponent();
         try
         {
+            InitThemePicker();
             LoadApiKeys();
             RefreshBackupUi();
         }
@@ -135,6 +137,37 @@ public sealed partial class SettingsPage : Page
         OcrProviderBox.SelectedIndex = 0;
         try { if (File.Exists(KeysEncPath)) File.Delete(KeysEncPath); } catch { /* ignore */ }
         ApiKeysStatusText.Text = "API keys cleared.";
+    }
+
+    private bool _themeInitializing;
+
+    private void InitThemePicker()
+    {
+        _themeInitializing = true;
+        var saved = (App.MainWindow as MainWindow)?.GetSavedThemeSetting() ?? "Dark";
+        foreach (var item in ThemeBox.Items.OfType<ComboBoxItem>())
+        {
+            if ((string)item.Tag == saved)
+            {
+                ThemeBox.SelectedItem = item;
+                break;
+            }
+        }
+        _themeInitializing = false;
+    }
+
+    private void ThemeBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_themeInitializing) return;
+        if (ThemeBox.SelectedItem is not ComboBoxItem { Tag: string tag }) return;
+
+        var theme = tag switch
+        {
+            "Light" => Microsoft.UI.Xaml.ElementTheme.Light,
+            "System" => Microsoft.UI.Xaml.ElementTheme.Default,
+            _ => Microsoft.UI.Xaml.ElementTheme.Dark
+        };
+        (App.MainWindow as MainWindow)?.SetTheme(theme, tag);
     }
 
     private sealed class ApiKeysConfig

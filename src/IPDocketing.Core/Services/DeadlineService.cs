@@ -52,4 +52,13 @@ public class DeadlineService
         _audit.Log("Create", "Deadline", deadline.Id, $"Manually added: {deadline.Description}, due {deadline.DueDate:yyyy-MM-dd}.");
         return deadline;
     }
+
+    public void Delete(int deadlineId)
+    {
+        var deadline = _db.Deadlines.Find(deadlineId);
+        if (deadline is null) return;
+        _db.Deadlines.Remove(deadline);
+        _db.SaveChanges();
+        _audit.Log("Delete", "Deadline", deadlineId, $"Deleted: {deadline.Description}.");
+    }
 }

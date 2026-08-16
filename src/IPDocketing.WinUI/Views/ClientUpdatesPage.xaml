@@ -39,8 +39,8 @@
                     </Grid.RowDefinitions>
                     <StackPanel Orientation="Horizontal" Spacing="10" Margin="0,0,0,12">
                         <Button Content="Generate update" Style="{StaticResource LiquidButtonStyle}" Click="Generate_Click" />
-                        <Button Content="Copy to clipboard" Style="{StaticResource SecondaryButtonStyle}" Click="Copy_Click" />
-                        <Button Content="Mark sent" Style="{StaticResource SecondaryButtonStyle}" Click="MarkSent_Click" />
+                        <Button Content="Copy to clipboard" Style="{StaticResource GlassButtonStyle}" Click="Copy_Click" />
+                        <Button Content="Mark sent" Style="{StaticResource GlassButtonStyle}" Click="MarkSent_Click" />
                     </StackPanel>
                     <TextBox x:Name="SummaryBox" Grid.Row="1" IsReadOnly="True" AcceptsReturn="True"
                              TextWrapping="Wrap" ScrollViewer.VerticalScrollBarVisibility="Auto" />

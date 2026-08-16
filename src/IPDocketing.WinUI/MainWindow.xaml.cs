@@ -31,6 +31,7 @@ public sealed partial class MainWindow : Window
         SetTitleBar(AppTitleBar);
         ConfigureWindow();
         ApplySystemBackdrop();
+        ApplySavedTheme();
 
         _clockTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
         _clockTimer.Tick += (_, _) => UpdateClock();
@@ -125,6 +126,36 @@ public sealed partial class MainWindow : Window
             // Solid remains
         }
     }
+
+    private const string ThemeSettingKey = "AppTheme";
+
+    /// <summary>
+    /// Reads the saved theme preference (Dark / Light / System) and applies
+    /// it to the whole window. Defaults to Dark, since Liquid Glass was
+    /// designed dark-first — the Light and HighContrast dictionaries exist
+    /// in LiquidGlass.xaml too (see ThemeDictionaries there), this just
+    /// controls which one is active and remembers the choice.
+    /// </summary>
+    private void ApplySavedTheme()
+    {
+        var saved = Windows.Storage.ApplicationData.Current.LocalSettings.Values[ThemeSettingKey] as string ?? "Dark";
+        RootGrid.RequestedTheme = saved switch
+        {
+            "Light" => ElementTheme.Light,
+            "System" => ElementTheme.Default,
+            _ => ElementTheme.Dark
+        };
+    }
+
+    /// <summary>Called from SettingsPage when the user changes the theme picker.</summary>
+    public void SetTheme(ElementTheme theme, string settingValue)
+    {
+        RootGrid.RequestedTheme = theme;
+        Windows.Storage.ApplicationData.Current.LocalSettings.Values[ThemeSettingKey] = settingValue;
+    }
+
+    public string GetSavedThemeSetting() =>
+        Windows.Storage.ApplicationData.Current.LocalSettings.Values[ThemeSettingKey] as string ?? "Dark";
 
     private void NavView_Loaded(object sender, RoutedEventArgs e)
     {

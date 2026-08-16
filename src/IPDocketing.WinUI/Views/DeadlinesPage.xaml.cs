@@ -22,8 +22,27 @@ public sealed partial class DeadlinesPage : Page
         CountText.Text = $"{rows.Count} deadlines";
     }
 
+    private void Complete_Click(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
+    {
+        if (sender is Button { Tag: int id })
+        {
+            App.Deadlines.MarkComplete(id);
+            LoadDeadlines();
+        }
+    }
+
+    private void Delete_Click(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
+    {
+        if (sender is Button { Tag: int id })
+        {
+            App.Deadlines.Delete(id);
+            LoadDeadlines();
+        }
+    }
+
     public sealed class DeadlineRow
     {
+        public int Id { get; }
         public string Description { get; }
         public string Matter { get; }
         public string DueDate { get; }
@@ -34,6 +53,7 @@ public sealed partial class DeadlinesPage : Page
 
         public DeadlineRow(Deadline deadline, DateTime today)
         {
+            Id = deadline.Id;
             Description = deadline.Description;
             Matter = deadline.Matter?.MatterNumber ?? "Unlinked matter";
             DueDate = deadline.DueDate.ToString("ddd, dd MMM yyyy");

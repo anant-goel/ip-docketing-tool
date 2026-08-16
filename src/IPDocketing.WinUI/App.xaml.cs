@@ -29,13 +29,61 @@ public partial class App : Application
     public App()
     {
         InitializeComponent();
+
         UnhandledException += (_, e) =>
         {
+            LogCrash("Application.UnhandledException", e.Exception);
             e.Handled = true;
+        };
+        AppDomain.CurrentDomain.UnhandledException += (_, e) =>
+            LogCrash("AppDomain.UnhandledException", e.ExceptionObject as Exception);
+        System.Threading.Tasks.TaskScheduler.UnobservedTaskException += (_, e) =>
+        {
+            LogCrash("TaskScheduler.UnobservedTaskException", e.Exception);
+            e.SetObserved();
         };
     }
 
+    /// <summary>
+    /// Writes to %LocalAppData%\IPDocketing\crash-log.txt. Exists because the
+    /// previous UnhandledException handler set e.Handled = true with no
+    /// logging at all -- any crash before this was invisible to us, and a
+    /// Windows .wer report strips the actual exception/stack for privacy.
+    /// If a startup step throws before AppDataDirectory is set, this falls
+    /// back to the temp folder so the log still gets written somewhere.
+    /// </summary>
+    private static void LogCrash(string source, Exception? ex)
+    {
+        try
+        {
+            var dir = string.IsNullOrEmpty(AppDataDirectory)
+                ? Path.GetTempPath()
+                : AppDataDirectory;
+            Directory.CreateDirectory(dir);
+            var path = Path.Combine(dir, "crash-log.txt");
+            var entry = $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] {source}{Environment.NewLine}{ex}{Environment.NewLine}{new string('-', 60)}{Environment.NewLine}";
+            File.AppendAllText(path, entry);
+        }
+        catch
+        {
+            // Logging must never itself throw during crash handling.
+        }
+    }
+
     protected override void OnLaunched(LaunchActivatedEventArgs args)
+    {
+        try
+        {
+            OnLaunchedCore(args);
+        }
+        catch (Exception ex)
+        {
+            LogCrash("OnLaunched", ex);
+            throw; // still crashes, but now the log has the real cause
+        }
+    }
+
+    private void OnLaunchedCore(LaunchActivatedEventArgs args)
     {
         AppDataDirectory = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),

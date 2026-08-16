@@ -49,7 +49,6 @@ public sealed partial class JournalPage : Page
         App.Journal.Add(new JournalIssue
         {
             IssueNumber = issueBox.Text,
-            // FIXED: Removed the '?.' since dateBox.Date is a non-nullable DateTimeOffset
             PublicationDate = dateBox.Date.DateTime,
             Url = urlBox.Text
         });

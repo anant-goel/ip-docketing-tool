@@ -102,8 +102,11 @@ public sealed partial class OppositionsPage : Page
         if (string.IsNullOrWhiteSpace(tmNumberBox.Text)) return;
 
         var assignedToId = (assigneePicker.SelectedItem as TeamMember)?.Id;
-        
-        // FIXED: Removed the '?.' since hearingDateBox.Date is a non-nullable DateTimeOffset
+        // Note: DatePicker.Date always has a value (defaults to today if the
+        // user never touches it) — there's no built-in "no date" state, so
+        // this will set today's date if left untouched rather than staying
+        // null. A "no hearing scheduled" checkbox would be needed to make
+        // this a true optional field; not added yet.
         var hearingDate = hearingDateBox.Date.DateTime;
 
         if (existing is null)

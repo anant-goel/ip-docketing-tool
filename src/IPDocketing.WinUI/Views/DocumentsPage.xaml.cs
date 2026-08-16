@@ -170,8 +170,33 @@ public sealed partial class DocumentsPage : Page
         DocumentInfoBar.IsOpen = true;
     }
 
+    private async void DeleteDocument_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { Tag: int id }) return;
+
+        var confirm = new ContentDialog
+        {
+            XamlRoot = XamlRoot,
+            Title = "Delete document record?",
+            Content = "This removes the record from the docket. The underlying file on disk is not deleted.",
+            PrimaryButtonText = "Delete",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Close
+        };
+        if (await confirm.ShowAsync() != ContentDialogResult.Primary) return;
+
+        var doc = App.Database.Documents.Find(id);
+        if (doc is not null)
+        {
+            App.Database.Documents.Remove(doc);
+            App.Database.SaveChanges();
+        }
+        LoadDocuments();
+    }
+
     public sealed class DocumentRow
     {
+        public int Id { get; }
         public string FileName { get; }
         public string Matter { get; }
         public string Type { get; }
@@ -182,6 +207,7 @@ public sealed partial class DocumentsPage : Page
 
         public DocumentRow(Document document, string matter)
         {
+            Id = document.Id;
             FileName = document.FileName;
             FilePath = document.FilePath;
             Matter = $"{matter} · version {document.Version}";
