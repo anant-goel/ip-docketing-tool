@@ -73,11 +73,11 @@ public partial class App : Application
         }
     }
 
-    protected override void OnLaunched(LaunchActivatedEventArgs args)
+    protected override async void OnLaunched(LaunchActivatedEventArgs args)
     {
         try
         {
-            OnLaunchedCore(args);
+            await OnLaunchedCoreAsync(args);
         }
         catch (Exception ex)
         {
@@ -86,8 +86,16 @@ public partial class App : Application
         }
     }
 
-    private void OnLaunchedCore(LaunchActivatedEventArgs args)
+    private async System.Threading.Tasks.Task OnLaunchedCoreAsync(LaunchActivatedEventArgs args)
     {
+        var splash = new SplashWindow();
+        splash.Activate();
+        // Give the dispatcher a chance to actually paint the splash before
+        // the synchronous DB/seed work below blocks the UI thread - without
+        // this yield, Activate() only requests the window be shown; nothing
+        // paints until the message loop gets a turn.
+        await System.Threading.Tasks.Task.Yield();
+
         AppDataDirectory = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "IPDocketing");
@@ -113,6 +121,7 @@ public partial class App : Application
         // the app has no formal EF migrations - acceptable for now, but
         // worth switching to real migrations before this holds data anyone
         // depends on keeping.
+        splash.SetStatus("Preparing database...");
         const int schemaVersion = 2;
         var schemaVersionPath = Path.Combine(AppDataDirectory, "schema-version.txt");
         var previousVersion = File.Exists(schemaVersionPath)
@@ -174,6 +183,8 @@ public partial class App : Application
             // Falls back to the default blue accent - never worth crashing over.
         }
 
+        splash.SetStatus("Loading workspace...");
+
         MainWindow = new MainWindow();
         _window = MainWindow;
         _window.Closed += (_, _) =>
@@ -188,5 +199,6 @@ public partial class App : Application
             Database?.Dispose();
         };
         _window.Activate();
+        splash.Close();
     }
 }

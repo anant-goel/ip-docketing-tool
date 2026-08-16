@@ -14,8 +14,16 @@ public sealed partial class CalendarPage : Page
 
     public CalendarPage()
     {
-        _deadlines = App.Deadlines.GetAll();
         InitializeComponent();
+        try
+        {
+            _deadlines = App.Deadlines.GetAll();
+        }
+        catch (Exception ex)
+        {
+            _deadlines = new List<Deadline>();
+            System.Diagnostics.Debug.WriteLine($"CalendarPage.GetAll failed: {ex}");
+        }
     }
 
     private void Page_Loaded(object sender, RoutedEventArgs e)

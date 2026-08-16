@@ -19,9 +19,17 @@ namespace IPDocketing.WinUI.Views;
 /// SELECTOR CAVEAT (applies to every ExecuteScriptAsync call below): these
 /// are best-guess field/element selectors, not confirmed against the live
 /// rendered DOM, since I only ever had this site's text-extracted content
-/// to work from, never raw HTML with real element ids. Open DevTools (F12)
-/// in the embedded browser, find the real ids, and update the selectors -
-/// each spot is marked "SELECTOR TODO".
+/// to work from, never raw HTML with real element ids. The bulk-fetch
+/// status extraction uses a sturdier technique than the others - matching
+/// each field by its visible label text (e.g. "Status", "Proprietor")
+/// rather than guessing an element id - based on a working pattern found
+/// in Ritam-Guha/Trademark-scrapper, a 2019 Java/Selenium scraper against
+/// IP India's older eRegister tool. That project's exact selectors don't
+/// apply here (different site era), but the label-matching strategy and
+/// its documented field list (Status, Application No, Class, Proprietor,
+/// Agent/Attorney, Valid-upto, plus a documents table with name/date/link
+/// per row) transfer even though the site doesn't. Open DevTools (F12) in
+/// the embedded browser to confirm/adjust against the current page.
 /// </summary>
 public sealed partial class IpIndiaPortalPage : Page
 {
@@ -206,18 +214,81 @@ public sealed partial class IpIndiaPortalPage : Page
                 // the real page's timing is known.
                 await System.Threading.Tasks.Task.Delay(2500);
 
-                // SELECTOR TODO: guessed result-container selector.
-                var statusResult = await Browser.CoreWebView2.ExecuteScriptAsync("""
+                // SELECTOR TODO: table structure is still a guess for the
+                // current site - but the STRATEGY here (match each field by
+                // its visible label text, e.g. "Status", "Proprietor Name",
+                // rather than guessing an element id) is a validated pattern
+                // from Ritam-Guha/Trademark-scrapper, a 2019 Java scraper
+                // against IP India's older eRegister tool. Label text tends
+                // to survive a site redesign in a way internal ids don't,
+                // so this should need less retuning than an id-based guess
+                // even though the exact table layout has surely changed.
+                // Also attempts to find a document-download table using the
+                // same repo's pattern (a table of rows, each with a name,
+                // date, and a download link) - this is the piece that
+                // answers "fetch the examination report and other
+                // documents", which wasn't buildable without this reference.
+                var extracted = await Browser.CoreWebView2.ExecuteScriptAsync("""
                     (function() {
-                        var el = document.querySelector('#statusResult, .status-result, [id*="result" i]');
-                        return el ? el.innerText.trim().replace(/\s+/g, ' ').substring(0, 300) : '';
+                        function findByLabel(label) {
+                            var xpath = "//tr[contains(., '" + label + "')]";
+                            var row = document.evaluate(xpath, document, null,
+                                XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
+                            if (!row) return '';
+                            var cells = row.querySelectorAll('td');
+                            return cells.length > 1 ? cells[cells.length - 1].innerText.trim() : '';
+                        }
+
+                        var fields = {
+                            status: findByLabel('Status'),
+                            applicationNo: findByLabel('Application No'),
+                            tmClass: findByLabel('Class'),
+                            proprietor: findByLabel('Proprietor'),
+                            agent: findByLabel('Agent') || findByLabel('Attorney'),
+                            validUpto: findByLabel('Valid') || findByLabel('Renewed')
+                        };
+
+                        // Look for a documents table: any table where most rows
+                        // end in an <a href> (name/date/link per row, matching
+                        // the reference repo's uploaded-documents pattern).
+                        var docLinks = [];
+                        document.querySelectorAll('table').forEach(function(table) {
+                            var anchors = table.querySelectorAll('a[href]');
+                            if (anchors.length >= 1 && anchors.length <= 20) {
+                                anchors.forEach(function(a) {
+                                    if (a.href && a.innerText.trim().length > 0) {
+                                        docLinks.push(a.innerText.trim() + '|' + a.href);
+                                    }
+                                });
+                            }
+                        });
+
+                        return JSON.stringify({ fields: fields, docs: docLinks.slice(0, 10) });
                     })();
                     """);
 
-                var statusText = System.Text.Json.JsonSerializer.Deserialize<string>(statusResult) ?? "";
+                var parsed = System.Text.Json.JsonDocument.Parse(
+                    System.Text.Json.JsonSerializer.Deserialize<string>(extracted) ?? "{}");
+
+                var root = parsed.RootElement;
+                var statusText = "";
+                if (root.TryGetProperty("fields", out var fieldsEl))
+                {
+                    var parts = new List<string>();
+                    foreach (var prop in fieldsEl.EnumerateObject())
+                    {
+                        var val = prop.Value.GetString();
+                        if (!string.IsNullOrWhiteSpace(val)) parts.Add($"{prop.Name}: {val}");
+                    }
+                    statusText = string.Join(" | ", parts);
+                }
+
+                var docCount = root.TryGetProperty("docs", out var docsEl) ? docsEl.GetArrayLength() : 0;
+                if (docCount > 0) statusText += $" ({docCount} document link(s) found)";
+
                 _bulkResults.Add(new FetchedStatusRow(
                     number,
-                    string.IsNullOrWhiteSpace(statusText) ? "Couldn't read status text - selector needs adjusting." : statusText,
+                    string.IsNullOrWhiteSpace(statusText) ? "Couldn't read any fields - selectors need adjusting for the current page." : statusText,
                     !alreadyLinkedAppNumbers.Contains(number)));
             }
             catch (Exception ex)

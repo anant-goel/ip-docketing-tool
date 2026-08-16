@@ -11,9 +11,16 @@ public sealed partial class PtoSyncPage : Page
     public PtoSyncPage()
     {
         InitializeComponent();
-        SourceCombo.ItemsSource = Enum.GetValues<PtoSource>();
-        SourceCombo.SelectedIndex = 0;
-        AddActivity("PTO synchronization is ready for a configured connection.");
+        try
+        {
+            SourceCombo.ItemsSource = Enum.GetValues<PtoSource>();
+            SourceCombo.SelectedIndex = 0;
+            AddActivity("PTO synchronization is ready for a configured connection.");
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"PtoSyncPage init failed: {ex}");
+        }
     }
 
     private PtoSource SelectedSource => SourceCombo.SelectedItem is PtoSource source
