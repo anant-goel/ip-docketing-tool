@@ -10,6 +10,7 @@
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
@@ -23,11 +24,37 @@
                 <TextBlock Text="Weekly TMR Journal issues — track which ones you've reviewed for conflicting marks."
                            Style="{StaticResource SubtitleStyle}" Margin="0,4,0,0" />
             </StackPanel>
-            <Button Grid.Column="1" Content="+ Log this week's issue" Style="{StaticResource LiquidButtonStyle}"
+            <Button Grid.Column="1" Content="+ Log manually" Style="{StaticResource GlassButtonStyle}"
                     VerticalAlignment="Center" Click="AddIssue_Click" />
         </Grid>
 
-        <Border Grid.Row="1" Style="{StaticResource GlassCardStyle}" Padding="8" Margin="0,0,0,16">
+        <!-- Real automatic fetch: this specific IP India page has no login/CAPTCHA,
+             so this genuinely fetches live from ipindia.gov.in - not a manual-paste
+             workaround like the Watch alerts below still are. -->
+        <Border Grid.Row="1" Style="{StaticResource GlassCardStyle}" Padding="16" Margin="0,0,0,16">
+            <Grid ColumnSpacing="10">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="140" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="140" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Text="Auto-fetch:" VerticalAlignment="Center" FontWeight="SemiBold"
+                           Foreground="{ThemeResource TextPrimaryBrush}" />
+                <DatePicker x:Name="FetchDateBox" Grid.Column="1" />
+                <TextBlock Grid.Column="2" Text="Class" VerticalAlignment="Center" Margin="10,0,0,0"
+                           Foreground="{ThemeResource TextSecondaryBrush}" />
+                <TextBox x:Name="FetchClassBox" Grid.Column="3" PlaceholderText="e.g. 25" />
+                <Button Grid.Column="4" Content="Fetch from IP India" Style="{StaticResource LiquidButtonStyle}"
+                        Click="AutoFetch_Click" Margin="10,0,0,0" />
+                <TextBlock x:Name="FetchStatusText" Grid.Column="5" VerticalAlignment="Center" Margin="10,0,0,0"
+                           TextWrapping="Wrap" Foreground="{ThemeResource TextSecondaryBrush}" FontSize="12" />
+            </Grid>
+        </Border>
+
+        <Border Grid.Row="2" Style="{StaticResource GlassCardStyle}" Padding="8" Margin="0,0,0,16">
             <ListView x:Name="IssueList" Background="Transparent" SelectionMode="Single" MaxHeight="220">
                 <ListView.ItemTemplate>
                     <DataTemplate>
@@ -54,7 +81,7 @@
             </ListView>
         </Border>
 
-        <Grid Grid.Row="2" Margin="0,0,0,10">
+        <Grid Grid.Row="3" Margin="0,0,0,10">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
@@ -65,7 +92,7 @@
                     Click="RunWatch_Click" />
         </Grid>
 
-        <Border Grid.Row="3" Style="{StaticResource GlassCardStyle}" Padding="8">
+        <Border Grid.Row="4" Style="{StaticResource GlassCardStyle}" Padding="8">
             <ListView x:Name="AlertList" Background="Transparent" SelectionMode="Single">
                 <ListView.ItemTemplate>
                     <DataTemplate>

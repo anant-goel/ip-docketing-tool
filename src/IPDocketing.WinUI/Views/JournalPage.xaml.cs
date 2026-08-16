@@ -22,6 +22,47 @@ public sealed partial class JournalPage : Page
         AlertList.ItemsSource = App.Watch.GetAll().Select(a => new AlertRow(a)).ToList();
     }
 
+    private async void AutoFetch_Click(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
+    {
+        if (!int.TryParse(FetchClassBox.Text?.Trim(), out var trademarkClass) || trademarkClass < 1 || trademarkClass > 99)
+        {
+            FetchStatusText.Text = "Enter a valid trademark class (1-99).";
+            return;
+        }
+
+        var date = FetchDateBox.Date.DateTime;
+        FetchStatusText.Text = "Fetching from IP India...";
+
+        try
+        {
+            var result = await App.JournalFetch.FindByDateAndClassAsync(date, trademarkClass);
+            if (result is null)
+            {
+                FetchStatusText.Text = $"No journal issue found on/before {date:dd MMM yyyy}, or class {trademarkClass} " +
+                                        "wasn't in a parseable range for that issue (some rows are notices/well-known-marks only).";
+                return;
+            }
+
+            var (issue, classRange, pdfUrl) = result.Value;
+
+            App.Journal.Add(new IPDocketing.Core.Models.JournalIssue
+            {
+                IssueNumber = issue.JournalNumber,
+                PublicationDate = issue.PublicationDate ?? date,
+                Url = pdfUrl,
+                Notes = $"Auto-fetched for class {trademarkClass} ({classRange})"
+            });
+
+            FetchStatusText.Text = $"Found journal {issue.JournalNumber} ({issue.PublicationDate:dd MMM yyyy}), " +
+                                    $"class {trademarkClass} is in \"{classRange}\" - logged with the PDF link.";
+            LoadIssues();
+        }
+        catch (Exception ex)
+        {
+            FetchStatusText.Text = $"Fetch failed: {ex.Message}";
+        }
+    }
+
     private async void AddIssue_Click(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
     {
         var issueBox = new TextBox { Header = "Issue number", PlaceholderText = "e.g. 2156" };

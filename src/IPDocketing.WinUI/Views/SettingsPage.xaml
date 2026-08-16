@@ -18,13 +18,17 @@
                                Foreground="{ThemeResource TextPrimaryBrush}" />
                     <TextBlock TextWrapping="Wrap" FontSize="12"
                                Foreground="{ThemeResource TextSecondaryBrush}"
-                               Text="Dark matches the Liquid Glass design and is the default. Light and System are also fully supported." />
+                               Text="Dark matches the Liquid Glass design and is the default. Light, Colorful and System are also supported." />
                     <ComboBox x:Name="ThemeBox" Header="Theme" HorizontalAlignment="Stretch"
                               SelectionChanged="ThemeBox_SelectionChanged">
                         <ComboBoxItem Content="Dark" Tag="Dark" />
                         <ComboBoxItem Content="Light" Tag="Light" />
+                        <ComboBoxItem Content="Colorful" Tag="Colorful" />
                         <ComboBoxItem Content="Match system" Tag="System" />
                     </ComboBox>
+                    <TextBlock x:Name="ThemeRestartNote" TextWrapping="Wrap" FontSize="12"
+                               Foreground="{StaticResource WarningBrush}" Visibility="Collapsed"
+                               Text="Colorful's accent palette applies after you restart the app - Dark/Light/System switch instantly, but this one doesn't." />
                 </StackPanel>
             </Border>
 

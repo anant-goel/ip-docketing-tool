@@ -153,6 +153,9 @@ public sealed partial class SettingsPage : Page
                 break;
             }
         }
+        ThemeRestartNote.Visibility = saved == "Colorful"
+            ? Microsoft.UI.Xaml.Visibility.Visible
+            : Microsoft.UI.Xaml.Visibility.Collapsed;
         _themeInitializing = false;
     }
 
@@ -168,6 +171,10 @@ public sealed partial class SettingsPage : Page
             _ => Microsoft.UI.Xaml.ElementTheme.Dark
         };
         (App.MainWindow as MainWindow)?.SetTheme(theme, tag);
+
+        ThemeRestartNote.Visibility = tag == "Colorful"
+            ? Microsoft.UI.Xaml.Visibility.Visible
+            : Microsoft.UI.Xaml.Visibility.Collapsed;
     }
 
     private sealed class ApiKeysConfig

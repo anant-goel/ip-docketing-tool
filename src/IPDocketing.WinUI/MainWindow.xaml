@@ -65,15 +65,6 @@
                 SelectionChanged="NavView_SelectionChanged"
                 Loaded="NavView_Loaded">
 
-                <NavigationView.Resources>
-                    <SolidColorBrush x:Key="NavigationViewItemBackgroundSelected" Color="#28FFFFFF" />
-                    <SolidColorBrush x:Key="NavigationViewItemBackgroundSelectedPointerOver" Color="#36FFFFFF" />
-                    <SolidColorBrush x:Key="NavigationViewItemBackgroundPointerOver" Color="#18FFFFFF" />
-                    <SolidColorBrush x:Key="NavigationViewItemForeground" Color="#B8C3D5" />
-                    <SolidColorBrush x:Key="NavigationViewItemForegroundSelected" Color="#FFFFFFFF" />
-                    <SolidColorBrush x:Key="NavigationViewItemForegroundPointerOver" Color="#FFFFFFFF" />
-                </NavigationView.Resources>
-
                 <NavigationView.PaneHeader>
                     <TextBlock Text="WORKSPACE" Margin="8,10,0,12" FontSize="10"
                                CharacterSpacing="110" Foreground="{ThemeResource TextTertiaryBrush}" />

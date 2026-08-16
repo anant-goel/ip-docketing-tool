@@ -34,6 +34,12 @@
                           TintOpacity="0.22"
                           TintLuminosityOpacity="0.88"
                           FallbackColor="#E6192233" />
+            <SolidColorBrush x:Key="NavigationViewItemBackgroundSelected" Color="#28FFFFFF" />
+            <SolidColorBrush x:Key="NavigationViewItemBackgroundSelectedPointerOver" Color="#36FFFFFF" />
+            <SolidColorBrush x:Key="NavigationViewItemBackgroundPointerOver" Color="#18FFFFFF" />
+            <SolidColorBrush x:Key="NavigationViewItemForeground" Color="#B8C3D5" />
+            <SolidColorBrush x:Key="NavigationViewItemForegroundSelected" Color="#FFFFFFFF" />
+            <SolidColorBrush x:Key="NavigationViewItemForegroundPointerOver" Color="#FFFFFFFF" />
         </ResourceDictionary>
 
         <ResourceDictionary x:Key="Light">
@@ -65,6 +71,12 @@
                           TintOpacity="0.28"
                           TintLuminosityOpacity="0.92"
                           FallbackColor="#EDF8FAFD" />
+            <SolidColorBrush x:Key="NavigationViewItemBackgroundSelected" Color="#1F3F70D9" />
+            <SolidColorBrush x:Key="NavigationViewItemBackgroundSelectedPointerOver" Color="#2E3F70D9" />
+            <SolidColorBrush x:Key="NavigationViewItemBackgroundPointerOver" Color="#0F121722" />
+            <SolidColorBrush x:Key="NavigationViewItemForeground" Color="#FF4A5568" />
+            <SolidColorBrush x:Key="NavigationViewItemForegroundSelected" Color="#FF121722" />
+            <SolidColorBrush x:Key="NavigationViewItemForegroundPointerOver" Color="#FF121722" />
         </ResourceDictionary>
 
         <ResourceDictionary x:Key="HighContrast">
@@ -80,6 +92,12 @@
             <SolidColorBrush x:Key="AccentGlassButtonBrush" Color="{ThemeResource SystemColorHighlightColor}" />
             <SolidColorBrush x:Key="GlassPanelBrush" Color="{ThemeResource SystemColorWindowColor}" />
             <SolidColorBrush x:Key="GlassCardBrush" Color="{ThemeResource SystemColorWindowColor}" />
+            <SolidColorBrush x:Key="NavigationViewItemBackgroundSelected" Color="{ThemeResource SystemColorHighlightColor}" />
+            <SolidColorBrush x:Key="NavigationViewItemBackgroundSelectedPointerOver" Color="{ThemeResource SystemColorHighlightColor}" />
+            <SolidColorBrush x:Key="NavigationViewItemBackgroundPointerOver" Color="{ThemeResource SystemColorHighlightColor}" />
+            <SolidColorBrush x:Key="NavigationViewItemForeground" Color="{ThemeResource SystemColorWindowTextColor}" />
+            <SolidColorBrush x:Key="NavigationViewItemForegroundSelected" Color="{ThemeResource SystemColorHighlightTextColor}" />
+            <SolidColorBrush x:Key="NavigationViewItemForegroundPointerOver" Color="{ThemeResource SystemColorHighlightTextColor}" />
         </ResourceDictionary>
     </ResourceDictionary.ThemeDictionaries>
 

@@ -21,6 +21,7 @@ public partial class App : Application
     public static ClientUpdateService ClientUpdates { get; private set; } = null!;
     public static IndiaPincodeService Pincode { get; private set; } = null!;
     public static GmailOtpService GmailOtp { get; private set; } = null!;
+    public static JournalFetchService JournalFetch { get; private set; } = null!;
 
     public static string AppDataDirectory { get; private set; } = null!;
     public static string DatabasePath { get; private set; } = null!;
@@ -149,6 +150,29 @@ public partial class App : Application
         ClientUpdates = new ClientUpdateService(Database);
         Pincode = new IndiaPincodeService();
         GmailOtp = new GmailOtpService(AppDataDirectory);
+        JournalFetch = new JournalFetchService();
+
+        // Applied here, before any window/page exists, so every page's
+        // StaticResource lookups pick up the override from the start
+        // rather than needing a live re-theme (which StaticResource
+        // doesn't support - only ThemeResource does, and these accent
+        // colors are plain static values shared across Light/Dark).
+        try
+        {
+            var themeSettingPath = Path.Combine(AppDataDirectory, "theme-preference.txt");
+            var savedTheme = File.Exists(themeSettingPath) ? File.ReadAllText(themeSettingPath).Trim() : "Dark";
+            if (savedTheme == "Colorful")
+            {
+                Resources.MergedDictionaries.Add(new ResourceDictionary
+                {
+                    Source = new Uri("ms-appx:///Themes/ColorfulAccent.xaml")
+                });
+            }
+        }
+        catch
+        {
+            // Falls back to the default blue accent - never worth crashing over.
+        }
 
         MainWindow = new MainWindow();
         _window = MainWindow;

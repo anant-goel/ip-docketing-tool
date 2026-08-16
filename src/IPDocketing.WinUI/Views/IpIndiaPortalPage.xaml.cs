@@ -1,40 +1,40 @@
+using System.Collections.ObjectModel;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.Web.WebView2.Core;
+using Windows.ApplicationModel.DataTransfer;
 
 namespace IPDocketing.WinUI.Views;
 
 /// <summary>
 /// Embeds the real IP India portals via WebView2 (the same engine as Edge -
 /// this is a documented Windows control, not a scraping trick). The person
-/// still solves the CAPTCHA by hand in the embedded page; this page only
-/// automates the OTP-typing step by reading it from their own Gmail via the
-/// official Gmail API (see GmailOtpService). Nothing here touches, solves,
-/// or works around the CAPTCHA itself.
+/// still solves the CAPTCHA by hand in the embedded page; everything this
+/// page automates is either (a) typing data the person already gave the
+/// app themselves (OTP, search terms, application numbers), or (b) reading
+/// results out of a session the person has already unlocked with their own
+/// CAPTCHA solve. Nothing here touches, solves, or works around the
+/// CAPTCHA itself, and bulk fetch never re-solves it per item - it runs
+/// inside the one session you already authenticated.
 ///
-/// SELECTOR CAVEAT: the JS in AutoFillOtp_Click that locates the OTP input
-/// field is a best-guess placeholder (see tmrsearch.ipindia.gov.in's actual
-/// rendered DOM was never available to inspect live while writing this -
-/// same limitation flagged when the original Selenium script was built
-/// earlier in this project). Open DevTools in the embedded browser
-/// (F12 works in WebView2), find the OTP input's actual id/name, and update
-/// the selector below - it's marked clearly.
-///
-/// SESSION PERSISTENCE: this uses WebView2's own default session storage
-/// rather than a custom folder - three attempts at wiring a custom
-/// UserDataFolder each broke the build on a different version-sensitive
-/// API detail I couldn't verify without a live compile, so it was cut in
-/// favor of something that reliably builds. WebView2's default behavior
-/// already persists cookies between runs on its own; this app just doesn't
-/// control or clear that folder itself.
+/// SELECTOR CAVEAT (applies to every ExecuteScriptAsync call below): these
+/// are best-guess field/element selectors, not confirmed against the live
+/// rendered DOM, since I only ever had this site's text-extracted content
+/// to work from, never raw HTML with real element ids. Open DevTools (F12)
+/// in the embedded browser, find the real ids, and update the selectors -
+/// each spot is marked "SELECTOR TODO".
 /// </summary>
 public sealed partial class IpIndiaPortalPage : Page
 {
     private const string TrademarkSearchUrl = "https://tmrsearch.ipindia.gov.in/tmrpublicsearch";
+    private const string EStatusUrl = "https://tmrsearch.ipindia.gov.in/estatus";
     private const string PatentSearchUrl = "https://iprsearch.ipindia.gov.in/PublicSearch";
+
+    private readonly ObservableCollection<FetchedStatusRow> _bulkResults = new();
 
     public IpIndiaPortalPage()
     {
         InitializeComponent();
+        BulkResultsList.ItemsSource = _bulkResults;
         Loaded += async (_, _) => await InitBrowserAsync();
     }
 
@@ -42,14 +42,6 @@ public sealed partial class IpIndiaPortalPage : Page
     {
         try
         {
-            // Deliberately the simplest possible call. Custom user-data-folder
-            // control (for session persistence across restarts) kept breaking
-            // the build across three different attempts at guessing this
-            // SDK version's exact API shape - not worth it. This uses
-            // WebView2's own default behavior, which already persists
-            // cookies/session to its default per-app folder between runs;
-            // it just isn't a folder this app chose or can point
-            // "Clear saved session" at.
             await Browser.EnsureCoreWebView2Async();
             Browser.CoreWebView2.Navigate(TrademarkSearchUrl);
         }
@@ -62,14 +54,17 @@ public sealed partial class IpIndiaPortalPage : Page
 
     private void GoToTrademark_Click(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
     {
-        if (Browser.CoreWebView2 is not null)
-            Browser.CoreWebView2.Navigate(TrademarkSearchUrl);
+        if (Browser.CoreWebView2 is not null) Browser.CoreWebView2.Navigate(TrademarkSearchUrl);
+    }
+
+    private void GoToEStatus_Click(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
+    {
+        if (Browser.CoreWebView2 is not null) Browser.CoreWebView2.Navigate(EStatusUrl);
     }
 
     private void GoToPatent_Click(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
     {
-        if (Browser.CoreWebView2 is not null)
-            Browser.CoreWebView2.Navigate(PatentSearchUrl);
+        if (Browser.CoreWebView2 is not null) Browser.CoreWebView2.Navigate(PatentSearchUrl);
     }
 
     private async void AutoFillOtp_Click(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
@@ -105,10 +100,8 @@ public sealed partial class IpIndiaPortalPage : Page
             return;
         }
 
-        // SELECTOR TODO: 'input[id*="otp" i]' is a guess, not confirmed against
-        // the live rendered page. Open DevTools (F12) in the embedded browser,
-        // inspect the actual OTP field, and replace this selector.
-        var script = $$"""
+        // SELECTOR TODO: guess, not confirmed against the live page.
+        var result = await Browser.CoreWebView2.ExecuteScriptAsync($$"""
             (function() {
                 var field = document.querySelector('input[id*="otp" i]');
                 if (!field) return 'not-found';
@@ -117,12 +110,179 @@ public sealed partial class IpIndiaPortalPage : Page
                 field.dispatchEvent(new Event('change', { bubbles: true }));
                 return 'filled';
             })();
-            """;
-
-        var result = await Browser.CoreWebView2.ExecuteScriptAsync(script);
+            """);
 
         StatusText.Text = result.Trim('"') == "filled"
             ? $"OTP {otp} auto-filled. Review it on the page and click Verify yourself."
             : $"Found OTP {otp}, but couldn't locate the field automatically - the selector needs adjusting (see code comment). You can type it in manually: {otp}";
+    }
+
+    private async void FillPriorArtSearch_Click(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
+    {
+        if (Browser.CoreWebView2 is null) return;
+        var name = PriorArtNameBox.Text?.Trim() ?? "";
+        var tmClass = PriorArtClassBox.Text?.Trim() ?? "";
+        if (string.IsNullOrEmpty(name))
+        {
+            StatusText.Text = "Enter a mark name to search first.";
+            return;
+        }
+
+        // SELECTOR TODO: guessed field ids for the search form.
+        var result = await Browser.CoreWebView2.ExecuteScriptAsync($$"""
+            (function() {
+                var nameField = document.querySelector('input[id*="mark" i], input[id*="wordmark" i], input[name*="mark" i]');
+                var classField = document.querySelector('input[id*="class" i], select[id*="class" i]');
+                var filled = [];
+                if (nameField) {
+                    nameField.value = '{{name.Replace("'", "\\'")}}';
+                    nameField.dispatchEvent(new Event('input', { bubbles: true }));
+                    filled.push('name');
+                }
+                if (classField && '{{tmClass}}'.length > 0) {
+                    classField.value = '{{tmClass}}';
+                    classField.dispatchEvent(new Event('input', { bubbles: true }));
+                    classField.dispatchEvent(new Event('change', { bubbles: true }));
+                    filled.push('class');
+                }
+                return filled.join(',');
+            })();
+            """);
+
+        var filledFields = result.Trim('"');
+        StatusText.Text = string.IsNullOrEmpty(filledFields)
+            ? "Couldn't locate the search form fields automatically - the selector needs adjusting (see code comment)."
+            : $"Filled: {filledFields}. Review and hit search yourself on the page.";
+    }
+
+    private async void BulkFetch_Click(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
+    {
+        var numbers = (BulkNumbersBox.Text ?? "")
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(n => n.Length > 0)
+            .Distinct()
+            .ToList();
+
+        if (numbers.Count == 0)
+        {
+            BulkStatusText.Text = "Paste at least one application number first.";
+            return;
+        }
+        if (Browser.CoreWebView2 is null)
+        {
+            BulkStatusText.Text = "Browser isn't ready yet.";
+            return;
+        }
+
+        _bulkResults.Clear();
+        var alreadyLinkedAppNumbers = App.Matters.GetAll()
+            .Where(m => !string.IsNullOrWhiteSpace(m.ApplicationNumber))
+            .Select(m => m.ApplicationNumber!)
+            .ToHashSet();
+
+        for (int i = 0; i < numbers.Count; i++)
+        {
+            var number = numbers[i];
+            BulkStatusText.Text = $"Fetching {i + 1} of {numbers.Count}: {number}...";
+
+            try
+            {
+                // SELECTOR TODO: guessed application-number field + submit button ids.
+                await Browser.CoreWebView2.ExecuteScriptAsync($$"""
+                    (function() {
+                        var field = document.querySelector('input[id*="appno" i], input[id*="application" i], input[name*="appno" i]');
+                        var button = document.querySelector('button[id*="search" i], input[type="submit"]');
+                        if (!field) return 'no-field';
+                        field.value = '{{number}}';
+                        field.dispatchEvent(new Event('input', { bubbles: true }));
+                        if (button) button.click();
+                        return 'submitted';
+                    })();
+                    """);
+
+                // The e-status result likely loads via AJAX rather than a full
+                // page navigation, so there's no reliable "done" event to await -
+                // this fixed delay is a heuristic, not a guarantee. Tune it once
+                // the real page's timing is known.
+                await System.Threading.Tasks.Task.Delay(2500);
+
+                // SELECTOR TODO: guessed result-container selector.
+                var statusResult = await Browser.CoreWebView2.ExecuteScriptAsync("""
+                    (function() {
+                        var el = document.querySelector('#statusResult, .status-result, [id*="result" i]');
+                        return el ? el.innerText.trim().replace(/\s+/g, ' ').substring(0, 300) : '';
+                    })();
+                    """);
+
+                var statusText = System.Text.Json.JsonSerializer.Deserialize<string>(statusResult) ?? "";
+                _bulkResults.Add(new FetchedStatusRow(
+                    number,
+                    string.IsNullOrWhiteSpace(statusText) ? "Couldn't read status text - selector needs adjusting." : statusText,
+                    !alreadyLinkedAppNumbers.Contains(number)));
+            }
+            catch (Exception ex)
+            {
+                _bulkResults.Add(new FetchedStatusRow(number, $"Fetch failed: {ex.Message}", false));
+            }
+        }
+
+        BulkStatusText.Text = $"Done - {numbers.Count} number(s) fetched.";
+    }
+
+    private async void CopyBulkReport_Click(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
+    {
+        if (_bulkResults.Count == 0)
+        {
+            BulkStatusText.Text = "Nothing fetched yet to copy.";
+            return;
+        }
+
+        var report = string.Join(Environment.NewLine + Environment.NewLine,
+            _bulkResults.Select(r => $"{r.ApplicationNumber}{Environment.NewLine}{r.StatusSummary}"));
+
+        var package = new DataPackage();
+        package.SetText(report);
+        Clipboard.SetContent(package);
+        BulkStatusText.Text = "Report copied - paste it into an email.";
+        await System.Threading.Tasks.Task.CompletedTask;
+    }
+
+    private void AddFetchedToList_Click(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
+    {
+        if (sender is not Button { Tag: FetchedStatusRow row }) return;
+
+        App.Matters.Add(new IPDocketing.Core.Models.Matter
+        {
+            MatterNumber = $"FETCHED-{row.ApplicationNumber}",
+            ApplicationNumber = row.ApplicationNumber,
+            Title = $"Imported from e-Status ({row.ApplicationNumber})",
+            Type = IPDocketing.Core.Models.MatterType.Trademark,
+            Country = "IN"
+        });
+
+        row.NotAdded = false;
+        BulkStatusText.Text = $"{row.ApplicationNumber} added to Matters - open it to fill in the mark name, client, etc.";
+    }
+
+    public sealed class FetchedStatusRow : System.ComponentModel.INotifyPropertyChanged
+    {
+        public string ApplicationNumber { get; }
+        public string StatusSummary { get; }
+
+        private bool _notAdded;
+        public bool NotAdded
+        {
+            get => _notAdded;
+            set { _notAdded = value; PropertyChanged?.Invoke(this, new(nameof(NotAdded))); }
+        }
+
+        public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
+
+        public FetchedStatusRow(string applicationNumber, string statusSummary, bool notAdded)
+        {
+            ApplicationNumber = applicationNumber;
+            StatusSummary = statusSummary;
+            _notAdded = notAdded;
+        }
     }
 }
