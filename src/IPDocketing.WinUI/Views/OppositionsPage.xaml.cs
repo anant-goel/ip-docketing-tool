@@ -102,7 +102,9 @@ public sealed partial class OppositionsPage : Page
         if (string.IsNullOrWhiteSpace(tmNumberBox.Text)) return;
 
         var assignedToId = (assigneePicker.SelectedItem as TeamMember)?.Id;
-        var hearingDate = hearingDateBox.Date?.DateTime;
+        
+        // FIXED: Removed the '?.' since hearingDateBox.Date is a non-nullable DateTimeOffset
+        var hearingDate = hearingDateBox.Date.DateTime;
 
         if (existing is null)
         {
