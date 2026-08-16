@@ -45,6 +45,69 @@ public sealed partial class MattersPage : Page
         LoadMatters(results.ToList());
     }
 
+    private async void LogEvent_Click(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
+    {
+        if (sender is not Button { Tag: int matterId }) return;
+        var matter = App.Matters.GetById(matterId);
+        if (matter is null) return;
+
+        var typePicker = new ComboBox
+        {
+            Header = "Event type",
+            ItemsSource = Enum.GetValues<EventType>(),
+            SelectedIndex = 0
+        };
+        var dateBox = new DatePicker { Header = "Event date" };
+        var notesBox = new TextBox { Header = "Notes (optional)", AcceptsReturn = true, Height = 60 };
+
+        var panel = new StackPanel { Spacing = 10, Width = 360 };
+        panel.Children.Add(typePicker);
+        panel.Children.Add(dateBox);
+        panel.Children.Add(notesBox);
+
+        var dialog = new ContentDialog
+        {
+            XamlRoot = XamlRoot,
+            Title = $"Log event for {matter.MatterNumber}",
+            Content = panel,
+            PrimaryButtonText = "Log event",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Primary
+        };
+
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
+
+        var ev = new Event
+        {
+            MatterId = matter.Id,
+            Type = (EventType)typePicker.SelectedItem,
+            EventDate = dateBox.Date.DateTime,
+            Notes = string.IsNullOrWhiteSpace(notesBox.Text) ? null : notesBox.Text
+        };
+        App.Database.Events.Add(ev);
+        App.Database.SaveChanges();
+
+        // This is where the deadline rule engine actually fires - it matches
+        // (matter.Country, matter.Type, event.Type) against CountryRules and,
+        // if a rule exists, auto-creates the resulting statutory deadline.
+        var deadline = App.RuleEngine.CalculateAndCreateDeadline(ev);
+
+        var resultDialog = new ContentDialog
+        {
+            XamlRoot = XamlRoot,
+            Title = deadline is null ? "Event logged" : "Deadline created",
+            Content = deadline is null
+                ? $"No deadline rule matches {matter.Country}/{matter.Type}/{ev.Type} yet. " +
+                  "The event was still recorded against the matter."
+                : $"{deadline.Description}\ndue {deadline.DueDate:dd MMM yyyy} " +
+                  $"(nominal {deadline.NominalDueDate:dd MMM yyyy}).",
+            CloseButtonText = "OK"
+        };
+        await resultDialog.ShowAsync();
+
+        LoadMatters(App.Matters.GetAll());
+    }
+
     private async void AddMatter_Click(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
     {
         await ShowMatterDialog(null);
@@ -81,7 +144,14 @@ public sealed partial class MattersPage : Page
     /// <summary>Shared dialog for both Add (existing == null) and Edit (existing != null).</summary>
     private async System.Threading.Tasks.Task ShowMatterDialog(Matter? existing)
     {
-        var numberBox = new TextBox { Header = "Matter number", PlaceholderText = "e.g. TM-2026-001", Text = existing?.MatterNumber ?? "" };
+        var numberBox = new TextBox { Header = "Matter number (your internal docket reference)", PlaceholderText = "e.g. TM-2026-001", Text = existing?.MatterNumber ?? "" };
+        var applicationNumberBox = new TextBox { Header = "Application number (as filed with IP India)", PlaceholderText = "e.g. 4567890", Text = existing?.ApplicationNumber ?? "" };
+        var countryBox = new ComboBox
+        {
+            Header = "Country / jurisdiction",
+            ItemsSource = new[] { "IN", "US", "EP", "PCT", "CN" },
+            SelectedItem = existing?.Country ?? "IN"
+        };
         var titleBox = new TextBox { Header = "Mark / title", Text = existing?.Title ?? "" };
         var clientBox = new TextBox { Header = "Client name", Text = existing?.ClientName ?? "" };
         var typePicker = new ComboBox
@@ -93,6 +163,26 @@ public sealed partial class MattersPage : Page
         var proprietorBox = new TextBox { Header = "Proprietor", Text = existing?.ProprietorName ?? "" };
         var attorneyBox = new TextBox { Header = "Attorney of record", Text = existing?.AttorneyOfRecord ?? "" };
         var stateBox = new TextBox { Header = "State", Text = existing?.State ?? "" };
+        var pincodeBox = new TextBox { Header = "PIN code (optional - auto-fills State)", PlaceholderText = "e.g. 171001", MaxLength = 6, Width = 260 };
+        var pincodeLookupButton = new Button { Content = "Look up", Margin = new Microsoft.UI.Xaml.Thickness(0, 22, 0, 0) };
+        var pincodeStatusText = new TextBlock { FontSize = 11, Opacity = 0.7 };
+        pincodeLookupButton.Click += async (_, _) =>
+        {
+            pincodeStatusText.Text = "Looking up...";
+            var result = await App.Pincode.LookupAsync(pincodeBox.Text);
+            if (result is null)
+            {
+                pincodeStatusText.Text = "Not found - enter State manually.";
+            }
+            else
+            {
+                stateBox.Text = result.State;
+                pincodeStatusText.Text = $"Found: {result.District}, {result.State}";
+            }
+        };
+        var pincodeRow = new StackPanel { Orientation = Microsoft.UI.Xaml.Controls.Orientation.Horizontal, Spacing = 10 };
+        pincodeRow.Children.Add(pincodeBox);
+        pincodeRow.Children.Add(pincodeLookupButton);
         var classBox = new TextBox { Header = "Nice class", PlaceholderText = "e.g. 25", Text = existing?.NiceClass ?? "" };
         var markTypePicker = new ComboBox
         {
@@ -111,7 +201,7 @@ public sealed partial class MattersPage : Page
 
         var panel = new StackPanel { Spacing = 10, Width = 380 };
         foreach (var control in new Microsoft.UI.Xaml.FrameworkElement[]
-                 { numberBox, titleBox, clientBox, typePicker, proprietorBox, attorneyBox, stateBox, classBox, markTypePicker, assigneePicker })
+                 { numberBox, applicationNumberBox, countryBox, titleBox, clientBox, typePicker, proprietorBox, attorneyBox, stateBox, pincodeRow, pincodeStatusText, classBox, markTypePicker, assigneePicker })
             panel.Children.Add(control);
 
         var scroll = new ScrollViewer { Content = panel, MaxHeight = 480 };
@@ -136,6 +226,8 @@ public sealed partial class MattersPage : Page
             App.Matters.Add(new Matter
             {
                 MatterNumber = numberBox.Text,
+                ApplicationNumber = string.IsNullOrWhiteSpace(applicationNumberBox.Text) ? null : applicationNumberBox.Text,
+                Country = countryBox.SelectedItem as string ?? "IN",
                 Title = titleBox.Text,
                 ClientName = clientBox.Text,
                 Type = (MatterType)typePicker.SelectedItem,
@@ -150,6 +242,8 @@ public sealed partial class MattersPage : Page
         else
         {
             existing.MatterNumber = numberBox.Text;
+            existing.ApplicationNumber = string.IsNullOrWhiteSpace(applicationNumberBox.Text) ? null : applicationNumberBox.Text;
+            existing.Country = countryBox.SelectedItem as string ?? "IN";
             existing.Title = titleBox.Text;
             existing.ClientName = clientBox.Text;
             existing.Type = (MatterType)typePicker.SelectedItem;
@@ -169,9 +263,9 @@ public sealed partial class MattersPage : Page
     {
         public int Id { get; }
         public string Number { get; }
+        public string TypeAndApplicationNumber { get; }
         public string Title { get; }
         public string Client { get; }
-        public string Type { get; }
         public string Country { get; }
         public string Status { get; }
         public string FilingDate { get; }
@@ -183,9 +277,11 @@ public sealed partial class MattersPage : Page
         {
             Id = matter.Id;
             Number = matter.MatterNumber;
+            TypeAndApplicationNumber = string.IsNullOrWhiteSpace(matter.ApplicationNumber)
+                ? $"{matter.Type} · no application number"
+                : $"{matter.Type} · App# {matter.ApplicationNumber}";
             Title = matter.Title;
             Client = matter.ClientName;
-            Type = matter.Type.ToString();
             Country = matter.Country;
             Status = matter.Status.ToString();
             FilingDate = matter.FilingDate?.ToString("dd MMM yyyy") ?? "Not filed";

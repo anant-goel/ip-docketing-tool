@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="IPDocketing.WinUI.Views.IpIndiaPortalPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:Microsoft.UI.Xaml.Controls"
+    Background="Transparent">
+
+    <Grid Padding="30,24,30,30">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <Grid Margin="0,0,0,14">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <StackPanel>
+                <TextBlock Text="IP India Portal" Style="{StaticResource PageTitleStyle}" />
+                <TextBlock Text="The real IP India trademark search, embedded. You solve the CAPTCHA yourself; the app can auto-read the OTP from Gmail and fill it in."
+                           Style="{StaticResource SubtitleStyle}" Margin="0,4,0,0" TextWrapping="Wrap" />
+            </StackPanel>
+            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                <Button Content="Trademark search" Style="{StaticResource GlassButtonStyle}" Click="GoToTrademark_Click" />
+                <Button Content="Patent search (InPASS)" Style="{StaticResource GlassButtonStyle}" Click="GoToPatent_Click" />
+            </StackPanel>
+        </Grid>
+
+        <Border Grid.Row="1" Style="{StaticResource GlassPanelStyle}" Padding="14,10" Margin="0,0,0,14">
+            <Grid ColumnSpacing="10">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock x:Name="StatusText" VerticalAlignment="Center"
+                           Text="After you request the OTP and solve the CAPTCHA on the page below, click 'Auto-fill OTP from Gmail'."
+                           Foreground="{ThemeResource TextSecondaryBrush}" TextWrapping="Wrap" />
+                <Button Grid.Column="1" Content="Auto-fill OTP from Gmail" Style="{StaticResource LiquidButtonStyle}"
+                        Click="AutoFillOtp_Click" />
+            </Grid>
+        </Border>
+
+        <Border Grid.Row="2" Style="{StaticResource GlassCardStyle}" Padding="4">
+            <controls:WebView2 x:Name="Browser" />
+        </Border>
+    </Grid>
+</Page>

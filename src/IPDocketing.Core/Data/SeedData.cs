@@ -83,6 +83,40 @@ public static class SeedData
                 ExtensionAvailable = true, MaxExtensionDays = 180,
                 Citation = "35 U.S.C. 41(b) / 37 CFR 1.362", EffectiveFrom = new DateTime(2000, 1, 1), RuleVersion = "USPTO_MAINT_v1",
                 ExtensionFeeNote = "Surcharge window: 3.5-4.0 years from grant" },
+
+            // --- India (IP India / CGPDTM) ---
+            new() {
+                CountryCode = "IN", CountryName = "India", MatterType = MatterType.Trademark,
+                TriggerEvent = EventType.OfficeAction, DeadlineDescription = "TM examination report response (India)",
+                PeriodUnit = PeriodUnit.Months, PeriodLength = 1,
+                ExtensionAvailable = false, MaxExtensionDays = 0,
+                Citation = "Trade Marks Rules 2017, Rule 38(1)", EffectiveFrom = new DateTime(2017, 3, 6), RuleVersion = "IN_TMRULES2017_R38_v1",
+                ExtensionFeeNote = "No statutory extension; a late/absent response can result in the application being treated as abandoned" },
+
+            new() {
+                CountryCode = "IN", CountryName = "India", MatterType = MatterType.Trademark,
+                TriggerEvent = EventType.Grant, DeadlineDescription = "TM renewal due (10 years from registration)",
+                PeriodUnit = PeriodUnit.Months, PeriodLength = 120,
+                ExtensionAvailable = true, MaxExtensionDays = 180,
+                Citation = "Trade Marks Act 1999, Section 25", CitationUrl = "https://ipindia.gov.in/writereaddata/Portal/IPOAct/1_31_1_trade-marks-act.pdf",
+                EffectiveFrom = new DateTime(1999, 12, 30), RuleVersion = "IN_TMACT1999_S25_v1",
+                ExtensionFeeNote = "Renewable within 6 months after expiry with surcharge (Section 25(3)/(4)); restoration possible up to 1 year after expiry" },
+
+            new() {
+                CountryCode = "IN", CountryName = "India", MatterType = MatterType.Patent,
+                TriggerEvent = EventType.OfficeAction, DeadlineDescription = "First Examination Report (FER) response (India)",
+                PeriodUnit = PeriodUnit.Months, PeriodLength = 6,
+                ExtensionAvailable = true, MaxExtensionDays = 90,
+                Citation = "Patents Rules 2003, Rule 24B(6)", EffectiveFrom = new DateTime(2003, 5, 20), RuleVersion = "IN_PATRULES_R24B6_v1",
+                ExtensionFeeNote = "Extendable up to 3 months on request with fee (Rule 138); total 9 months from FER issuance is the outer limit" },
+
+            new() {
+                CountryCode = "IN", CountryName = "India", MatterType = MatterType.Patent,
+                TriggerEvent = EventType.Grant, DeadlineDescription = "1st renewal fee due (3rd year from filing)",
+                PeriodUnit = PeriodUnit.Months, PeriodLength = 36,
+                ExtensionAvailable = true, MaxExtensionDays = 180,
+                Citation = "Patents Act 1970, Section 53 / Patents Rules, Rule 80", EffectiveFrom = new DateTime(2003, 5, 20), RuleVersion = "IN_PATACT_S53_v1",
+                ExtensionFeeNote = "Late payment permitted up to 6 months with surcharge (Rule 80(1A)); renewal fee runs from the filing date, not the grant date - review before relying on this trigger if grant happened well after filing" },
         };
 
         db.CountryRules.AddRange(rules);

@@ -70,7 +70,7 @@
                             <StackPanel Grid.Column="1" VerticalAlignment="Center">
                                 <TextBlock Text="{Binding Number}" FontWeight="SemiBold"
                                            Foreground="{ThemeResource TextPrimaryBrush}" />
-                                <TextBlock Text="{Binding Type}" FontSize="11"
+                                <TextBlock Text="{Binding TypeAndApplicationNumber}" FontSize="11"
                                            Foreground="{ThemeResource TextTertiaryBrush}" />
                             </StackPanel>
                             <StackPanel Grid.Column="2" VerticalAlignment="Center">
@@ -98,6 +98,8 @@
                             <TextBlock Grid.Column="6" Text="{Binding AssignedTo}" VerticalAlignment="Center"
                                        FontSize="12" Foreground="{ThemeResource TextSecondaryBrush}" />
                             <StackPanel Grid.Column="7" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                <Button Content="Log event" Style="{StaticResource GlassButtonStyle}"
+                                        Padding="10,5" Click="LogEvent_Click" Tag="{Binding Id}" />
                                 <Button Content="Edit" Style="{StaticResource GlassButtonStyle}"
                                         Padding="10,5" Click="EditMatter_Click" Tag="{Binding Id}" />
                                 <Button Content="Delete" Style="{StaticResource GlassButtonStyle}"

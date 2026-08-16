@@ -98,6 +98,12 @@
                     <NavigationViewItem Content="Client Updates" Tag="ClientUpdates">
                         <NavigationViewItem.Icon><FontIcon Glyph="&#xE715;" /></NavigationViewItem.Icon>
                     </NavigationViewItem>
+                    <NavigationViewItem Content="Activity Log" Tag="ActivityLog">
+                        <NavigationViewItem.Icon><FontIcon Glyph="&#xE81C;" /></NavigationViewItem.Icon>
+                    </NavigationViewItem>
+                    <NavigationViewItem Content="IP India Portal" Tag="IpIndiaPortal">
+                        <NavigationViewItem.Icon><FontIcon Glyph="&#xE774;" /></NavigationViewItem.Icon>
+                    </NavigationViewItem>
                     <NavigationViewItem Content="Calendar" Tag="Calendar">
                         <NavigationViewItem.Icon><FontIcon Glyph="&#xE163;" /></NavigationViewItem.Icon>
                     </NavigationViewItem>

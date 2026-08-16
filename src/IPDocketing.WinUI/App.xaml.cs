@@ -19,6 +19,8 @@ public partial class App : Application
     public static JournalService Journal { get; private set; } = null!;
     public static WatchService Watch { get; private set; } = null!;
     public static ClientUpdateService ClientUpdates { get; private set; } = null!;
+    public static IndiaPincodeService Pincode { get; private set; } = null!;
+    public static GmailOtpService GmailOtp { get; private set; } = null!;
 
     public static string AppDataDirectory { get; private set; } = null!;
     public static string DatabasePath { get; private set; } = null!;
@@ -111,6 +113,8 @@ public partial class App : Application
         Journal = new JournalService(Database);
         Watch = new WatchService(Database);
         ClientUpdates = new ClientUpdateService(Database);
+        Pincode = new IndiaPincodeService();
+        GmailOtp = new GmailOtpService(AppDataDirectory);
 
         MainWindow = new MainWindow();
         _window = MainWindow;

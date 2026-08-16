@@ -69,8 +69,11 @@ public sealed partial class DocumentsPage : Page
 
             var matterPicker = new ComboBox
             {
-                Header = "File under matter",
-                ItemsSource = matters.Select(m => new MatterChoice(m.Id, $"{m.MatterNumber} · {m.Title}")).ToList(),
+                Header = "File under matter (application number shown where filed)",
+                ItemsSource = matters.Select(m => new MatterChoice(m.Id,
+                    string.IsNullOrWhiteSpace(m.ApplicationNumber)
+                        ? $"{m.MatterNumber} · {m.Title} · no application number on file"
+                        : $"{m.MatterNumber} · App# {m.ApplicationNumber} · {m.Title}")).ToList(),
                 SelectedIndex = 0,
                 MinWidth = 380
             };

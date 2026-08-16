@@ -185,6 +185,8 @@ public sealed partial class MainWindow : Window
             "Oppositions" => typeof(OppositionsPage),
             "Journal" => typeof(JournalPage),
             "ClientUpdates" => typeof(ClientUpdatesPage),
+            "ActivityLog" => typeof(ActivityLogPage),
+            "IpIndiaPortal" => typeof(IpIndiaPortalPage),
             "Calendar" => typeof(CalendarPage),
             "PtoSync" => typeof(PtoSyncPage),
             "Documents" => typeof(DocumentsPage),

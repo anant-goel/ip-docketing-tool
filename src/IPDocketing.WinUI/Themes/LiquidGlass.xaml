@@ -125,19 +125,12 @@
         <GradientStop Color="#00FFFFFF" Offset="1" />
     </RadialGradientBrush>
 
-    <!-- Elevation for glass surfaces. WinUI's ThemeShadow only renders when the
-         element has a non-zero Z translation, so both are set together here -
-         a card with just the Shadow property and no Translation stays flat. -->
-    <ThemeShadow x:Key="CardShadow" />
-
     <Style x:Key="GlassCardStyle" TargetType="Border">
         <Setter Property="Background" Value="{ThemeResource GlassCardBrush}" />
         <Setter Property="BorderBrush" Value="{StaticResource LiquidEdgeBrush}" />
         <Setter Property="BorderThickness" Value="1.25" />
         <Setter Property="CornerRadius" Value="22" />
         <Setter Property="Padding" Value="22" />
-        <Setter Property="Shadow" Value="{StaticResource CardShadow}" />
-        <Setter Property="Translation" Value="0,0,24" />
     </Style>
 
     <Style x:Key="GlassPanelStyle" TargetType="Border">

@@ -17,6 +17,7 @@
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
                 <Border Style="{StaticResource GlassCardStyle}">
                     <StackPanel Spacing="12">
@@ -34,10 +35,21 @@
                         <FontIcon Glyph="&#xE7C3;" FontSize="26" Foreground="{StaticResource InfoBrush}"
                                   HorizontalAlignment="Left" />
                         <TextBlock Text="Matter portfolio" Style="{StaticResource SectionTitleStyle}" />
-                        <TextBlock Text="Client, jurisdiction, type, status and filing date."
+                        <TextBlock Text="Client, jurisdiction, type, status, filing date and assignee."
                                    Foreground="{ThemeResource TextSecondaryBrush}" TextWrapping="Wrap" />
                         <Button Content="Export CSV" Style="{StaticResource GlassButtonStyle}"
                                 HorizontalAlignment="Left" Click="ExportMatters_Click" />
+                    </StackPanel>
+                </Border>
+                <Border Grid.Column="2" Style="{StaticResource GlassCardStyle}">
+                    <StackPanel Spacing="12">
+                        <FontIcon Glyph="&#xE7BA;" FontSize="26" Foreground="{StaticResource WarningBrush}"
+                                  HorizontalAlignment="Left" />
+                        <TextBlock Text="Opposition register" Style="{StaticResource SectionTitleStyle}" />
+                        <TextBlock Text="Direction, status, hearing date and assignee."
+                                   Foreground="{ThemeResource TextSecondaryBrush}" TextWrapping="Wrap" />
+                        <Button Content="Export CSV" Style="{StaticResource GlassButtonStyle}"
+                                HorizontalAlignment="Left" Click="ExportOppositions_Click" />
                     </StackPanel>
                 </Border>
             </Grid>
