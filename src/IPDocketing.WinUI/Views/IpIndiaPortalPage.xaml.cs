@@ -48,9 +48,7 @@ public sealed partial class IpIndiaPortalPage : Page
         try
         {
             Directory.CreateDirectory(SessionDataFolder);
-            var environment = await CoreWebView2Environment.CreateAsync(
-                browserExecutableFolder: null,
-                userDataFolder: SessionDataFolder);
+            var environment = await CoreWebView2Environment.CreateAsync((string?)null, SessionDataFolder);
             await Browser.EnsureCoreWebView2Async(environment);
             Browser.CoreWebView2.Navigate(TrademarkSearchUrl);
         }
