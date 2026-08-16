@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="IPDocketing.WinUI.Views.JournalPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Background="Transparent">
+
+    <Grid Padding="30,24,30,30">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <Grid Margin="0,0,0,20">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <StackPanel>
+                <TextBlock Text="Journal Watch" Style="{StaticResource PageTitleStyle}" />
+                <TextBlock Text="Weekly TMR Journal issues — track which ones you've reviewed for conflicting marks."
+                           Style="{StaticResource SubtitleStyle}" Margin="0,4,0,0" />
+            </StackPanel>
+            <Button Grid.Column="1" Content="+ Log this week's issue" Style="{StaticResource LiquidButtonStyle}"
+                    VerticalAlignment="Center" Click="AddIssue_Click" />
+        </Grid>
+
+        <Border Grid.Row="1" Style="{StaticResource GlassCardStyle}" Padding="8" Margin="0,0,0,16">
+            <ListView x:Name="IssueList" Background="Transparent" SelectionMode="Single" MaxHeight="220">
+                <ListView.ItemTemplate>
+                    <DataTemplate>
+                        <Grid Padding="12,13" ColumnSpacing="18">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="140" />
+                                <ColumnDefinition Width="150" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="110" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="{Binding IssueNumber}" FontWeight="SemiBold"
+                                       Foreground="{ThemeResource TextPrimaryBrush}" VerticalAlignment="Center" />
+                            <TextBlock Grid.Column="1" Text="{Binding PublicationDate}" VerticalAlignment="Center"
+                                       Foreground="{ThemeResource TextSecondaryBrush}" />
+                            <HyperlinkButton Grid.Column="2" Content="{Binding Url}" NavigateUri="{Binding Url}"
+                                             VerticalAlignment="Center" />
+                            <Border Grid.Column="3" Style="{StaticResource PillBadgeStyle}" HorizontalAlignment="Left" VerticalAlignment="Center">
+                                <TextBlock Text="{Binding ReviewedLabel}" FontSize="11" FontWeight="SemiBold"
+                                           Foreground="{StaticResource AccentBrush}" />
+                            </Border>
+                        </Grid>
+                    </DataTemplate>
+                </ListView.ItemTemplate>
+            </ListView>
+        </Border>
+
+        <Grid Grid.Row="2" Margin="0,0,0,10">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <TextBlock Text="Watch alerts — marks flagged as similar to your portfolio"
+                       Style="{StaticResource SubtitleStyle}" VerticalAlignment="Center" />
+            <Button Grid.Column="1" Content="Run watch on selected issue" Style="{StaticResource SecondaryButtonStyle}"
+                    Click="RunWatch_Click" />
+        </Grid>
+
+        <Border Grid.Row="3" Style="{StaticResource GlassCardStyle}" Padding="8">
+            <ListView x:Name="AlertList" Background="Transparent" SelectionMode="Single">
+                <ListView.ItemTemplate>
+                    <DataTemplate>
+                        <Grid Padding="12,13" ColumnSpacing="18">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="120" />
+                                <ColumnDefinition Width="100" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel VerticalAlignment="Center">
+                                <TextBlock Text="{Binding PublishedMark}" FontWeight="SemiBold"
+                                           Foreground="{ThemeResource TextPrimaryBrush}" />
+                                <TextBlock Text="{Binding PublishedApplicant}" FontSize="11"
+                                           Foreground="{ThemeResource TextTertiaryBrush}" />
+                            </StackPanel>
+                            <TextBlock Grid.Column="1" Text="{Binding MatterTitle}" VerticalAlignment="Center"
+                                       Foreground="{ThemeResource TextSecondaryBrush}" />
+                            <Border Grid.Column="2" Style="{StaticResource PillBadgeStyle}" HorizontalAlignment="Left" VerticalAlignment="Center">
+                                <TextBlock Text="{Binding ScoreLabel}" FontSize="11" FontWeight="SemiBold"
+                                           Foreground="{StaticResource AccentBrush}" />
+                            </Border>
+                            <Button Grid.Column="3" Content="Dismiss" Style="{StaticResource SecondaryButtonStyle}"
+                                    Click="DismissAlert_Click" Tag="{Binding Id}" />
+                        </Grid>
+                    </DataTemplate>
+                </ListView.ItemTemplate>
+            </ListView>
+        </Border>
+    </Grid>
+</Page>

@@ -34,7 +34,9 @@ public sealed partial class DocumentsPage : Page
         var rows = App.Database.Documents
             .AsEnumerable()
             .OrderByDescending(d => d.UploadedDate)
-            .Select(d => new DocumentRow(d, matterNumbers.GetValueOrDefault(d.MatterId, "Unlinked")))
+            .Select(d => new DocumentRow(d, d.MatterId.HasValue
+                ? matterNumbers.GetValueOrDefault(d.MatterId.Value, "Unlinked")
+                : "Unlinked"))
             .ToList();
         DocumentList.ItemsSource = rows;
         DocumentList.Visibility = rows.Count == 0 ? Visibility.Collapsed : Visibility.Visible;

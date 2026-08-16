@@ -16,6 +16,18 @@ public class Matter
     public string? PublicationNumber { get; set; }
     public string? GrantNumber { get; set; }
 
+    // --- Trademark Master Database fields (docx section 2) ---
+    // Left nullable so Patent/Copyright/TradeSecret matters are unaffected.
+    public string? ProprietorName { get; set; }
+    public string? AttorneyOfRecord { get; set; }
+    public string? State { get; set; }
+    public MarkType? MarkType { get; set; }
+    public string? NiceClass { get; set; }
+
+    // --- Assignment (docx: "tool to assign a particular TM to team member") ---
+    public int? AssignedToId { get; set; }
+    public TeamMember? AssignedTo { get; set; }
+
     public int? ParentMatterId { get; set; }
     public Matter? ParentMatter { get; set; }
     public List<Matter> ChildMatters { get; set; } = new();

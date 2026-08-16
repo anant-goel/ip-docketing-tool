@@ -184,6 +184,14 @@ public static class SeedData
             ResponsibleUser = "J. Patel"
         });
 
+        var mChen = new TeamMember { Name = "M. Chen", Role = "Attorney" };
+        var jPatel = new TeamMember { Name = "J. Patel", Role = "Paralegal" };
+        db.TeamMembers.AddRange(mChen, jPatel);
+        db.SaveChanges();
+
+        tm.AssignedToId = mChen.Id;
+        child.AssignedToId = jPatel.Id;
+
         db.SaveChanges();
     }
 }

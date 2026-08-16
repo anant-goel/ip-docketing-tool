@@ -14,6 +14,11 @@ public class AppDbContext : DbContext
     public DbSet<Document> Documents => Set<Document>();
     public DbSet<PtoNotice> PtoNotices => Set<PtoNotice>();
     public DbSet<UserAction> UserActions => Set<UserAction>();
+    public DbSet<TeamMember> TeamMembers => Set<TeamMember>();
+    public DbSet<Opposition> Oppositions => Set<Opposition>();
+    public DbSet<JournalIssue> JournalIssues => Set<JournalIssue>();
+    public DbSet<WatchAlert> WatchAlerts => Set<WatchAlert>();
+    public DbSet<ClientUpdateLog> ClientUpdateLogs => Set<ClientUpdateLog>();
 
     public AppDbContext(string dbPath)
     {
@@ -63,6 +68,42 @@ public class AppDbContext : DbContext
             .HasForeignKey(doc => doc.MatterId)
             .OnDelete(DeleteBehavior.Cascade);
 
+        modelBuilder.Entity<Document>()
+            .HasOne(doc => doc.Opposition)
+            .WithMany(o => o.Documents)
+            .HasForeignKey(doc => doc.OppositionId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<Matter>()
+            .HasOne(m => m.AssignedTo)
+            .WithMany()
+            .HasForeignKey(m => m.AssignedToId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        modelBuilder.Entity<Opposition>()
+            .HasOne(o => o.Matter)
+            .WithMany()
+            .HasForeignKey(o => o.MatterId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        modelBuilder.Entity<Opposition>()
+            .HasOne(o => o.AssignedTo)
+            .WithMany()
+            .HasForeignKey(o => o.AssignedToId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        modelBuilder.Entity<WatchAlert>()
+            .HasOne(w => w.JournalIssue)
+            .WithMany()
+            .HasForeignKey(w => w.JournalIssueId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<WatchAlert>()
+            .HasOne(w => w.Matter)
+            .WithMany()
+            .HasForeignKey(w => w.MatterId)
+            .OnDelete(DeleteBehavior.Cascade);
+
         modelBuilder.Entity<PtoNotice>()
             .HasOne(p => p.Matter)
             .WithMany()
@@ -79,5 +120,8 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<CountryRule>().Property(c => c.TriggerEvent).HasConversion<string>();
         modelBuilder.Entity<CountryRule>().Property(c => c.PeriodUnit).HasConversion<string>();
         modelBuilder.Entity<PtoNotice>().Property(p => p.Source).HasConversion<string>();
+        modelBuilder.Entity<Matter>().Property(m => m.MarkType).HasConversion<string>();
+        modelBuilder.Entity<Opposition>().Property(o => o.Direction).HasConversion<string>();
+        modelBuilder.Entity<Opposition>().Property(o => o.Status).HasConversion<string>();
     }
 }

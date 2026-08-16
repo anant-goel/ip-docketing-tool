@@ -89,6 +89,15 @@
                     <NavigationViewItem Content="Deadlines" Tag="Deadlines">
                         <NavigationViewItem.Icon><FontIcon Glyph="&#xE787;" /></NavigationViewItem.Icon>
                     </NavigationViewItem>
+                    <NavigationViewItem Content="Oppositions" Tag="Oppositions">
+                        <NavigationViewItem.Icon><FontIcon Glyph="&#xE7BA;" /></NavigationViewItem.Icon>
+                    </NavigationViewItem>
+                    <NavigationViewItem Content="Journal Watch" Tag="Journal">
+                        <NavigationViewItem.Icon><FontIcon Glyph="&#xE8A5;" /></NavigationViewItem.Icon>
+                    </NavigationViewItem>
+                    <NavigationViewItem Content="Client Updates" Tag="ClientUpdates">
+                        <NavigationViewItem.Icon><FontIcon Glyph="&#xE715;" /></NavigationViewItem.Icon>
+                    </NavigationViewItem>
                     <NavigationViewItem Content="Calendar" Tag="Calendar">
                         <NavigationViewItem.Icon><FontIcon Glyph="&#xE163;" /></NavigationViewItem.Icon>
                     </NavigationViewItem>

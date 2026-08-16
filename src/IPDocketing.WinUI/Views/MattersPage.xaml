@@ -8,10 +8,11 @@
     <Grid Padding="30,24,30,30">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <Grid Margin="0,0,0,20">
+        <Grid Margin="0,0,0,14">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
@@ -21,22 +22,45 @@
                 <TextBlock Text="Patents, trademarks and connected portfolio families."
                            Style="{StaticResource SubtitleStyle}" Margin="0,4,0,0" />
             </StackPanel>
-            <Border Grid.Column="1" Style="{StaticResource PillBadgeStyle}" VerticalAlignment="Center">
-                <TextBlock x:Name="CountText" Foreground="{ThemeResource TextSecondaryBrush}" />
-            </Border>
+            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                <Border Style="{StaticResource PillBadgeStyle}" VerticalAlignment="Center">
+                    <TextBlock x:Name="CountText" Foreground="{ThemeResource TextSecondaryBrush}" />
+                </Border>
+                <Button Content="+ Add matter" Style="{StaticResource LiquidButtonStyle}" Click="AddMatter_Click" />
+            </StackPanel>
         </Grid>
 
-        <Border Grid.Row="1" Style="{StaticResource GlassCardStyle}" Padding="8">
+        <!-- Comprehensive search (docx section 6): mark name plus proprietor / attorney / state,
+             each field searched independently so you don't need a combined query syntax. -->
+        <Grid Grid.Row="1" Margin="0,0,0,14" ColumnSpacing="10">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="2*" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="140" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <TextBox x:Name="MarkSearchBox" Grid.Column="0" PlaceholderText="Search mark / title..." />
+            <TextBox x:Name="ProprietorSearchBox" Grid.Column="1" PlaceholderText="Proprietor" />
+            <TextBox x:Name="AttorneySearchBox" Grid.Column="2" PlaceholderText="Attorney" />
+            <TextBox x:Name="StateSearchBox" Grid.Column="3" PlaceholderText="State" />
+            <Button Grid.Column="4" Content="Search" Style="{StaticResource SecondaryButtonStyle}" Click="Search_Click" />
+        </Grid>
+
+        <Border Grid.Row="2" Style="{StaticResource GlassCardStyle}" Padding="8">
             <ListView x:Name="MatterList" Background="Transparent" SelectionMode="Single">
                 <ListView.ItemTemplate>
                     <DataTemplate>
-                        <Grid Padding="12,13" ColumnSpacing="18">
+                        <Grid Padding="12,13" ColumnSpacing="16">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="42" />
-                                <ColumnDefinition Width="160" />
+                                <ColumnDefinition Width="140" />
                                 <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="170" />
-                                <ColumnDefinition Width="120" />
+                                <ColumnDefinition Width="140" />
+                                <ColumnDefinition Width="130" />
+                                <ColumnDefinition Width="110" />
+                                <ColumnDefinition Width="100" />
+                                <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
                             <Border Width="36" Height="36" CornerRadius="12"
                                     Background="{ThemeResource GlassInputBrush}"
@@ -56,15 +80,29 @@
                                            Foreground="{ThemeResource TextSecondaryBrush}" />
                             </StackPanel>
                             <StackPanel Grid.Column="3" VerticalAlignment="Center">
+                                <TextBlock Text="{Binding Proprietor}" FontSize="12" TextTrimming="CharacterEllipsis"
+                                           Foreground="{ThemeResource TextSecondaryBrush}" />
+                                <TextBlock Text="{Binding State}" FontSize="11"
+                                           Foreground="{ThemeResource TextTertiaryBrush}" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="4" VerticalAlignment="Center">
                                 <TextBlock Text="{Binding Country}" Foreground="{ThemeResource TextPrimaryBrush}" />
                                 <TextBlock Text="{Binding FilingDate}" FontSize="11"
                                            Foreground="{ThemeResource TextTertiaryBrush}" />
                             </StackPanel>
-                            <Border Grid.Column="4" Style="{StaticResource PillBadgeStyle}"
-                                    HorizontalAlignment="Right" VerticalAlignment="Center">
+                            <Border Grid.Column="5" Style="{StaticResource PillBadgeStyle}"
+                                    HorizontalAlignment="Left" VerticalAlignment="Center">
                                 <TextBlock Text="{Binding Status}" FontSize="11" FontWeight="SemiBold"
                                            Foreground="{StaticResource AccentBrush}" />
                             </Border>
+                            <TextBlock Grid.Column="6" Text="{Binding AssignedTo}" VerticalAlignment="Center"
+                                       FontSize="12" Foreground="{ThemeResource TextSecondaryBrush}" />
+                            <StackPanel Grid.Column="7" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                <Button Content="Edit" Style="{StaticResource SecondaryButtonStyle}"
+                                        Padding="10,5" Click="EditMatter_Click" Tag="{Binding Id}" />
+                                <Button Content="Delete" Style="{StaticResource SecondaryButtonStyle}"
+                                        Padding="10,5" Click="DeleteMatter_Click" Tag="{Binding Id}" />
+                            </StackPanel>
                         </Grid>
                     </DataTemplate>
                 </ListView.ItemTemplate>

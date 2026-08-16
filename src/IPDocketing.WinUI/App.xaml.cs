@@ -14,6 +14,11 @@ public partial class App : Application
     public static RuleEngineService RuleEngine { get; private set; } = null!;
     public static HolidayCalendarService Calendar { get; private set; } = null!;
     public static BackupService Backups { get; private set; } = null!;
+    public static TeamMemberService Team { get; private set; } = null!;
+    public static OppositionService Oppositions { get; private set; } = null!;
+    public static JournalService Journal { get; private set; } = null!;
+    public static WatchService Watch { get; private set; } = null!;
+    public static ClientUpdateService ClientUpdates { get; private set; } = null!;
 
     public static string AppDataDirectory { get; private set; } = null!;
     public static string DatabasePath { get; private set; } = null!;
@@ -53,6 +58,11 @@ public partial class App : Application
         Calendar = new HolidayCalendarService();
         RuleEngine = new RuleEngineService(Database, Audit, Calendar);
         Backups = new BackupService(DatabasePath);
+        Team = new TeamMemberService(Database);
+        Oppositions = new OppositionService(Database, Audit);
+        Journal = new JournalService(Database);
+        Watch = new WatchService(Database);
+        ClientUpdates = new ClientUpdateService(Database);
 
         MainWindow = new MainWindow();
         _window = MainWindow;

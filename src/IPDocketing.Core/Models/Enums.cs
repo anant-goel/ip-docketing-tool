@@ -77,3 +77,29 @@ public enum PeriodUnit
     Days,
     Months
 }
+
+/// <summary>Word mark vs device (logo) mark — docx section 6 splits search by this.</summary>
+public enum MarkType
+{
+    Word,
+    Device
+}
+
+/// <summary>docx section 3: oppositions we filed vs oppositions filed against us.</summary>
+public enum OppositionDirection
+{
+    FiledByUs,
+    FiledAgainstUs
+}
+
+public enum OppositionStatus
+{
+    Open,
+    NoticeIssued,
+    CounterStatementFiled,
+    EvidenceStage,
+    HearingScheduled,
+    Decided,
+    Withdrawn,
+    Settled
+}

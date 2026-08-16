@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="IPDocketing.WinUI.Views.ClientUpdatesPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Background="Transparent">
+
+    <Grid Padding="30,24,30,30">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <StackPanel Margin="0,0,0,20">
+            <TextBlock Text="Client Updates" Style="{StaticResource PageTitleStyle}" />
+            <TextBlock Text="Drafts a status summary from each client's matters and open deadlines. Generates the text locally — sending it is on you (copy into email)."
+                       Style="{StaticResource SubtitleStyle}" Margin="0,4,0,0" TextWrapping="Wrap" />
+        </StackPanel>
+
+        <Grid Grid.Row="1" ColumnSpacing="20">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="280" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <Border Style="{StaticResource GlassCardStyle}" Padding="14">
+                <StackPanel Spacing="10">
+                    <TextBlock Text="Clients" FontWeight="SemiBold" Foreground="{ThemeResource TextPrimaryBrush}" />
+                    <ListView x:Name="ClientList" SelectionMode="Single" SelectionChanged="ClientList_SelectionChanged" />
+                </StackPanel>
+            </Border>
+
+            <Border Grid.Column="1" Style="{StaticResource GlassCardStyle}" Padding="14">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <StackPanel Orientation="Horizontal" Spacing="10" Margin="0,0,0,12">
+                        <Button Content="Generate update" Style="{StaticResource LiquidButtonStyle}" Click="Generate_Click" />
+                        <Button Content="Copy to clipboard" Style="{StaticResource SecondaryButtonStyle}" Click="Copy_Click" />
+                        <Button Content="Mark sent" Style="{StaticResource SecondaryButtonStyle}" Click="MarkSent_Click" />
+                    </StackPanel>
+                    <TextBox x:Name="SummaryBox" Grid.Row="1" IsReadOnly="True" AcceptsReturn="True"
+                             TextWrapping="Wrap" ScrollViewer.VerticalScrollBarVisibility="Auto" />
+                    <TextBlock x:Name="StatusText" Grid.Row="2" Margin="0,10,0,0" FontSize="12"
+                               Foreground="{ThemeResource TextTertiaryBrush}" />
+                </Grid>
+            </Border>
+        </Grid>
+    </Grid>
+</Page>
