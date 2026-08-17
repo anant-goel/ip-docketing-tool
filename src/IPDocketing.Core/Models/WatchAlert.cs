@@ -27,6 +27,22 @@ public class WatchAlert
     /// <summary>0-100 rough similarity score from the matcher, not a legal opinion.</summary>
     public int SimilarityScore { get; set; }
 
+    /// <summary>
+    /// Which signal drove the score - "spelling", "tokens", "phonetic",
+    /// "containment", "ocr" or "identical". An alert that can't say why it
+    /// fired is one nobody can check, and one everybody eventually ignores.
+    /// </summary>
+    public string? PrimarySignal { get; set; }
+
+    /// <summary>Plain-English reasons, newline-separated, shown under the alert.</summary>
+    public string? MatchExplanation { get; set; }
+
+    /// <summary>Nice class of the published mark, where the Journal entry carried one.</summary>
+    public string? PublishedClass { get; set; }
+
+    /// <summary>Set when the published mark came from OCR rather than a text layer - it deserves more scepticism.</summary>
+    public bool FromOcr { get; set; }
+
     public bool Dismissed { get; set; }
     public DateTime CreatedDate { get; set; } = DateTime.UtcNow;
 }

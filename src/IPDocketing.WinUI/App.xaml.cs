@@ -22,6 +22,36 @@ public partial class App : Application
     public static IndiaPincodeService Pincode { get; private set; } = null!;
     public static GmailOtpService GmailOtp { get; private set; } = null!;
     public static JournalFetchService JournalFetch { get; private set; } = null!;
+    public static StatusTrackerService StatusTracker { get; private set; } = null!;
+    public static TeamNotificationService TeamNotifications { get; private set; } = null!;
+    public static RenewalService Renewals { get; private set; } = null!;
+    public static PortfolioImportService PortfolioImport { get; private set; } = null!;
+    public static AutoSyncService AutoSync { get; private set; } = null!;
+    public static DocumentIngestService DocumentIngest { get; private set; } = null!;
+
+    /// <summary>Whether the unattended Journal pipeline is running. Persisted between sessions.</summary>
+    public static bool AutoSyncEnabled { get; private set; }
+
+    /// <summary>
+    /// Turns the unattended pipeline on or off and remembers the choice. Off by
+    /// default on a fresh install: the first pass downloads several large PDFs,
+    /// and doing that unasked on someone's metered connection is not a decision
+    /// this app gets to make for them.
+    /// </summary>
+    public static void SetAutoSyncEnabled(bool enabled)
+    {
+        AutoSyncEnabled = enabled;
+        if (enabled) AutoSync.Start(); else AutoSync.Stop();
+
+        try
+        {
+            File.WriteAllText(Path.Combine(AppDataDirectory, "autosync.txt"), enabled ? "on" : "off");
+        }
+        catch
+        {
+            // A failed preference write shouldn't stop the toggle working now.
+        }
+    }
 
     public static string AppDataDirectory { get; private set; } = null!;
     public static string DatabasePath { get; private set; } = null!;
@@ -90,11 +120,20 @@ public partial class App : Application
     {
         var splash = new SplashWindow();
         splash.Activate();
-        // Give the dispatcher a chance to actually paint the splash before
-        // the synchronous DB/seed work below blocks the UI thread - without
-        // this yield, Activate() only requests the window be shown; nothing
-        // paints until the message loop gets a turn.
-        await System.Threading.Tasks.Task.Yield();
+
+        // PHASE 31 - the blank-window-on-launch fix, part one.
+        //
+        // Activate() only asks for the window to be shown; nothing is painted
+        // until the message loop next runs. A single Task.Yield (what used to
+        // be here) hands control back for one continuation, which is not the
+        // same as waiting for a frame - and the synchronous database work that
+        // followed then pinned the UI thread, so no frame ever arrived. The
+        // result was an empty window for the whole of startup.
+        //
+        // WaitForFirstPaintAsync completes only once the splash content has
+        // actually rendered, with a timeout so a machine that can't composite
+        // still boots.
+        await splash.WaitForFirstPaintAsync(TimeSpan.FromSeconds(2));
 
         AppDataDirectory = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
@@ -122,44 +161,127 @@ public partial class App : Application
         // worth switching to real migrations before this holds data anyone
         // depends on keeping.
         splash.SetStatus("Preparing database...");
-        const int schemaVersion = 2;
-        var schemaVersionPath = Path.Combine(AppDataDirectory, "schema-version.txt");
-        var previousVersion = File.Exists(schemaVersionPath)
-            ? int.TryParse(File.ReadAllText(schemaVersionPath).Trim(), out var v) ? v : 0
-            : 0;
 
-        if (previousVersion != schemaVersion && File.Exists(DatabasePath))
+        // PHASE 31 - the blank-window fix, part two.
+        //
+        // All of this used to run synchronously on the UI thread: schema
+        // rebuild, EnsureCreated, seeding, and a full pass generating client
+        // updates. On a cold start that is seconds of blocked message loop, so
+        // the splash could not paint and its progress bar could not animate.
+        //
+        // EF Core's DbContext has no thread affinity - it just must not be used
+        // concurrently - so building it on a worker thread and handing it back
+        // is safe. Nothing else touches these statics until this await returns.
+        await System.Threading.Tasks.Task.Run(() =>
         {
+            const int schemaVersion = 6;
+            var schemaVersionPath = Path.Combine(AppDataDirectory, "schema-version.txt");
+            var previousVersion = File.Exists(schemaVersionPath)
+                ? int.TryParse(File.ReadAllText(schemaVersionPath).Trim(), out var v) ? v : 0
+                : 0;
+
+            if (previousVersion != schemaVersion && File.Exists(DatabasePath))
+            {
+                // Phase 30: take a recoverable snapshot BEFORE throwing the old
+                // database away. The previous version deleted it outright, so every
+                // schema bump silently destroyed whatever had been entered since
+                // the last one - fine while this was a demo, not fine now that it
+                // holds real matters. The snapshot is a normal encrypted backup
+                // file, restorable from Settings > Backups.
+                try
+                {
+                    var preChangeDir = Path.Combine(AppDataDirectory, "Backups");
+                    Directory.CreateDirectory(preChangeDir);
+                    var stamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
+                    EncryptionService.EncryptFileTo(
+                        DatabasePath,
+                        Path.Combine(preChangeDir, $"presnapshot_schema{previousVersion}to{schemaVersion}_{stamp}.db.enc"));
+                }
+                catch
+                {
+                    // A failed snapshot must not block startup, but it is worth
+                    // knowing about - it lands in crash-log.txt via the caller.
+                }
+
+                try
+                {
+                    File.Delete(DatabasePath);
+                    if (File.Exists(sealedDb)) File.Delete(sealedDb);
+                }
+                catch
+                {
+                    // If we can't delete it, EnsureCreated below will still no-op
+                    // against the stale file and the same crash will resurface -
+                    // but we tried, and this shouldn't be fatal on its own.
+                }
+            }
+            File.WriteAllText(schemaVersionPath, schemaVersion.ToString());
+
+            splash.SetStatus("Opening database...");
+            Database = new AppDbContext(DatabasePath);
+
+            splash.SetStatus("Loading country rules...");
+            SeedData.EnsureSeeded(Database);
+            Audit = new AuditService(Database);
+            Matters = new MatterService(Database, Audit);
+            Deadlines = new DeadlineService(Database, Audit);
+            Calendar = new HolidayCalendarService();
+            RuleEngine = new RuleEngineService(Database, Audit, Calendar);
+            Backups = new BackupService(DatabasePath);
+            Team = new TeamMemberService(Database);
+            Oppositions = new OppositionService(Database, Audit);
+            Journal = new JournalService(Database);
+            Watch = new WatchService(Database);
+            ClientUpdates = new ClientUpdateService(Database);
+            Pincode = new IndiaPincodeService();
+            GmailOtp = new GmailOtpService(AppDataDirectory);
+            JournalFetch = new JournalFetchService();
+            StatusTracker = new StatusTrackerService(Database);
+            TeamNotifications = new TeamNotificationService(Database);
+            Renewals = new RenewalService(Database, Audit, Calendar);
+            PortfolioImport = new PortfolioImportService(Database, Matters, Audit);
+
+            DocumentIngest = new DocumentIngestService(
+                Database, Audit, Path.Combine(AppDataDirectory, "Documents"));
+
+            AutoSync = new AutoSyncService(
+                Database, Journal, JournalFetch, Watch, Audit,
+                Path.Combine(AppDataDirectory, "JournalLibrary"));
+
+            // The OCR half needs WinRT APIs that IPDocketing.Core, targeting
+            // plain net8.0-windows, cannot see - so the reader is built here and
+            // injected, keeping Core free of any UI-layer dependency.
+            AutoSync.UseExtractor(new Services.PdfTextExtractor());
+
+            // Renewal docketing is idempotent, so running it at every launch is
+            // safe and means a mark can never sit in the register without its
+            // four s.25 dates simply because nobody remembered to press a button.
             try
             {
-                File.Delete(DatabasePath);
-                if (File.Exists(sealedDb)) File.Delete(sealedDb);
+                splash.SetStatus("Docketing renewals...");
+                Renewals.DocketRenewals();
             }
-            catch
+            catch (Exception ex)
             {
-                // If we can't delete it, EnsureCreated below will still no-op
-                // against the stale file and the same crash will resurface -
-                // but we tried, and this shouldn't be fatal on its own.
+                LogCrash("Startup renewal docketing", ex);
             }
-        }
-        File.WriteAllText(schemaVersionPath, schemaVersion.ToString());
 
-        Database = new AppDbContext(DatabasePath);
-        SeedData.EnsureSeeded(Database);
-        Audit = new AuditService(Database);
-        Matters = new MatterService(Database, Audit);
-        Deadlines = new DeadlineService(Database, Audit);
-        Calendar = new HolidayCalendarService();
-        RuleEngine = new RuleEngineService(Database, Audit, Calendar);
-        Backups = new BackupService(DatabasePath);
-        Team = new TeamMemberService(Database);
-        Oppositions = new OppositionService(Database, Audit);
-        Journal = new JournalService(Database);
-        Watch = new WatchService(Database);
-        ClientUpdates = new ClientUpdateService(Database);
-        Pincode = new IndiaPincodeService();
-        GmailOtp = new GmailOtpService(AppDataDirectory);
-        JournalFetch = new JournalFetchService();
+            // docx section 8 - the generation half of "automatic client updates"
+            // really is automatic: any client whose last update is over a week old
+            // gets a fresh draft written at startup, without anyone asking. Sending
+            // still needs a human, because no mail transport is configured here.
+            try
+            {
+                splash.SetStatus("Drafting client updates...");
+                ClientUpdates.GenerateDueUpdates(TimeSpan.FromDays(7));
+            }
+            catch (Exception ex)
+            {
+                LogCrash("Startup client update generation", ex);
+            }
+
+
+        });
 
         // Applied here, before any window/page exists, so every page's
         // StaticResource lookups pick up the override from the start
@@ -183,7 +305,28 @@ public partial class App : Application
             // Falls back to the default blue accent - never worth crashing over.
         }
 
+        // Off unless previously switched on: the first pass pulls several large
+        // PDFs, and doing that unasked on a metered connection isn't this app's
+        // call to make.
+        try
+        {
+            var autoSyncPath = Path.Combine(AppDataDirectory, "autosync.txt");
+            if (File.Exists(autoSyncPath) &&
+                File.ReadAllText(autoSyncPath).Trim().Equals("on", StringComparison.OrdinalIgnoreCase))
+            {
+                SetAutoSyncEnabled(true);
+            }
+        }
+        catch (Exception ex)
+        {
+            LogCrash("Auto-sync preference", ex);
+        }
+
         splash.SetStatus("Loading workspace...");
+
+        // One turn of the loop so the final status actually renders before the
+        // main window's own construction takes the thread again.
+        await System.Threading.Tasks.Task.Yield();
 
         MainWindow = new MainWindow();
         _window = MainWindow;
@@ -195,6 +338,7 @@ public partial class App : Application
                     EncryptionService.EncryptFileTo(DatabasePath, sealedDb);
             }
             catch { /* ignore */ }
+            AutoSync?.Dispose();
             Backups?.Dispose();
             Database?.Dispose();
         };

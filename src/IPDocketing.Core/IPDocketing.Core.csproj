@@ -5,6 +5,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <RootNamespace>IPDocketing.Core</RootNamespace>
+    <PdfPigVersion Condition="'$(PdfPigVersion)' == ''">0.1.9</PdfPigVersion>
   </PropertyGroup>
 
   <ItemGroup>
@@ -13,6 +14,11 @@
     <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="8.0.0" />
     <PackageReference Include="Google.Apis.Gmail.v1" Version="1.69.0.3742" />
     <PackageReference Include="HtmlAgilityPack" Version="1.11.61" />
+    <!-- Pure-managed PDF text-layer extraction (MIT, netstandard2.0). Handles
+         the Journal PDFs, which are digitally generated and carry a real text
+         layer. Scanned pages with no text layer fall through to the Windows
+         OCR path in the WinUI project - see IDocumentTextExtractor. -->
+    <PackageReference Include="PdfPig" Version="$(PdfPigVersion)" />
   </ItemGroup>
 
 </Project>

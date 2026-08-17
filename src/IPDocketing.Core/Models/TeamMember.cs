@@ -12,5 +12,12 @@ public class TeamMember
     public string Name { get; set; } = string.Empty;
     public string? Email { get; set; }
     public string? Role { get; set; }
+    /// <summary>
+    /// This person's agent registration code, where they are a registered TM or
+    /// patent agent. Used to group the firm's filings by whose code they went in
+    /// under, which is how the Registry itself identifies them.
+    /// </summary>
+    public string? AgentCode { get; set; }
+
     public bool IsActive { get; set; } = true;
 }

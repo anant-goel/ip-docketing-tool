@@ -9,6 +9,10 @@
             <ResourceDictionary.MergedDictionaries>
                 <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls" />
                 <ResourceDictionary Source="Themes/LiquidGlass.xaml" />
+                <!-- Merged from the two Liquid Glass reference repos under
+                     /third_party. Loaded after the base dictionary so the
+                     refined bezel/specular tokens layer on top of it. -->
+                <ResourceDictionary Source="Themes/LiquidGlassMerged.xaml" />
             </ResourceDictionary.MergedDictionaries>
         </ResourceDictionary>
     </Application.Resources>

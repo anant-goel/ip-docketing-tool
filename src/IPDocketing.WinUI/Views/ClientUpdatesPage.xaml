@@ -13,7 +13,7 @@
 
         <StackPanel Margin="0,0,0,20">
             <TextBlock Text="Client Updates" Style="{StaticResource PageTitleStyle}" />
-            <TextBlock Text="Drafts a status summary from each client's matters and open deadlines. Generates the text locally — sending it is on you (copy into email)."
+            <TextBlock Text="Drafts a status summary from each client's matters and open deadlines. Generation is automatic — anything over a week old is redrafted at startup. Sending is not: there is no mail transport configured, so use the &quot;Open in mail app&quot; button or copy the text."
                        Style="{StaticResource SubtitleStyle}" Margin="0,4,0,0" TextWrapping="Wrap" />
         </StackPanel>
 
@@ -23,14 +23,14 @@
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
 
-            <Border Style="{StaticResource GlassCardStyle}" Padding="14">
+            <Border Style="{StaticResource GlassSurfaceStyle}" Padding="14">
                 <StackPanel Spacing="10">
                     <TextBlock Text="Clients" FontWeight="SemiBold" Foreground="{ThemeResource TextPrimaryBrush}" />
                     <ListView x:Name="ClientList" SelectionMode="Single" SelectionChanged="ClientList_SelectionChanged" />
                 </StackPanel>
             </Border>
 
-            <Border Grid.Column="1" Style="{StaticResource GlassCardStyle}" Padding="14">
+            <Border Grid.Column="1" Style="{StaticResource GlassSurfaceStyle}" Padding="14">
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
@@ -38,12 +38,15 @@
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
                     <StackPanel Orientation="Horizontal" Spacing="10" Margin="0,0,0,12">
-                        <Button Content="Generate update" Style="{StaticResource LiquidButtonStyle}" Click="Generate_Click" />
-                        <Button Content="Copy to clipboard" Style="{StaticResource GlassButtonStyle}" Click="Copy_Click" />
-                        <Button Content="Mark sent" Style="{StaticResource GlassButtonStyle}" Click="MarkSent_Click" />
+                        <Button Content="Generate update" Style="{StaticResource MergedAccentButtonStyle}" Click="Generate_Click" />
+                        <Button Content="Generate for all clients" Style="{StaticResource MergedGlassButtonBaseStyle}"
+                                Click="GenerateAll_Click"
+                                ToolTipService.ToolTip="Drafts a fresh update for every client in the portfolio" />
+                        <Button Content="Open in mail app" Style="{StaticResource MergedGlassButtonBaseStyle}" Click="OpenMail_Click" />
+                        <Button Content="Copy to clipboard" Style="{StaticResource MergedGlassButtonBaseStyle}" Click="Copy_Click" />
+                        <Button Content="Mark sent" Style="{StaticResource MergedGlassButtonBaseStyle}" Click="MarkSent_Click" />
                     </StackPanel>
-                    <TextBox x:Name="SummaryBox" Grid.Row="1" IsReadOnly="True" AcceptsReturn="True"
-                             TextWrapping="Wrap" ScrollViewer.VerticalScrollBarVisibility="Auto" />
+                    <TextBox x:Name="SummaryBox" Grid.Row="1" Style="{StaticResource GlassReadoutStyle}" />
                     <TextBlock x:Name="StatusText" Grid.Row="2" Margin="0,10,0,0" FontSize="12"
                                Foreground="{ThemeResource TextTertiaryBrush}" />
                 </Grid>

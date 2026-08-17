@@ -26,7 +26,11 @@
                 <Border Style="{StaticResource PillBadgeStyle}" VerticalAlignment="Center">
                     <TextBlock x:Name="CountText" Foreground="{ThemeResource TextSecondaryBrush}" />
                 </Border>
-                <Button Content="+ Add matter" Style="{StaticResource LiquidButtonStyle}" Click="AddMatter_Click" />
+                <Button Content="+ Add matter" Style="{StaticResource MergedAccentButtonStyle}" Click="AddMatter_Click" />
+                <Button Content="Import" Style="{StaticResource MergedGlassButtonBaseStyle}" Click="Import_Click"
+                        ToolTipService.ToolTip="Bring a portfolio in from a CSV, with a preview before anything is written" />
+                <Button Content="Export" Style="{StaticResource MergedGlassButtonBaseStyle}" Click="Export_Click"
+                        ToolTipService.ToolTip="Write the whole portfolio out as CSV — the same columns the importer reads" />
             </StackPanel>
         </Grid>
 
@@ -44,10 +48,10 @@
             <TextBox x:Name="ProprietorSearchBox" Grid.Column="1" PlaceholderText="Proprietor" />
             <TextBox x:Name="AttorneySearchBox" Grid.Column="2" PlaceholderText="Attorney" />
             <TextBox x:Name="StateSearchBox" Grid.Column="3" PlaceholderText="State" />
-            <Button Grid.Column="4" Content="Search" Style="{StaticResource GlassButtonStyle}" Click="Search_Click" />
+            <Button Grid.Column="4" Content="Search" Style="{StaticResource MergedGlassButtonBaseStyle}" Click="Search_Click" />
         </Grid>
 
-        <Border Grid.Row="2" Style="{StaticResource GlassCardStyle}" Padding="8">
+        <Border Grid.Row="2" Style="{StaticResource GlassSurfaceStyle}" Padding="8">
             <ListView x:Name="MatterList" Background="Transparent" SelectionMode="Single">
                 <ListView.ItemTemplate>
                     <DataTemplate>
@@ -98,12 +102,17 @@
                             <TextBlock Grid.Column="6" Text="{Binding AssignedTo}" VerticalAlignment="Center"
                                        FontSize="12" Foreground="{ThemeResource TextSecondaryBrush}" />
                             <StackPanel Grid.Column="7" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                                <Button Content="Log event" Style="{StaticResource GlassButtonStyle}"
-                                        Padding="10,5" Click="LogEvent_Click" Tag="{Binding Id}" />
-                                <Button Content="Edit" Style="{StaticResource GlassButtonStyle}"
-                                        Padding="10,5" Click="EditMatter_Click" Tag="{Binding Id}" />
-                                <Button Content="Delete" Style="{StaticResource GlassButtonStyle}"
-                                        Padding="10,5" Click="DeleteMatter_Click" Tag="{Binding Id}" />
+                                <Button Content="Status" Style="{StaticResource MergedGlassMiniButtonStyle}"
+                                        Click="TraceMatter_Click" Tag="{Binding Id}"
+                                        ToolTipService.ToolTip="Open the full prosecution and opposition history" />
+                                <Button Content="Assign" Style="{StaticResource MergedGlassMiniButtonStyle}"
+                                        Click="AssignMatter_Click" Tag="{Binding Id}" />
+                                <Button Content="Log event" Style="{StaticResource MergedGlassMiniButtonStyle}"
+                                        Click="LogEvent_Click" Tag="{Binding Id}" />
+                                <Button Content="Edit" Style="{StaticResource MergedGlassMiniButtonStyle}"
+                                        Click="EditMatter_Click" Tag="{Binding Id}" />
+                                <Button Content="Delete" Style="{StaticResource MergedGlassMiniButtonStyle}"
+                                        Click="DeleteMatter_Click" Tag="{Binding Id}" />
                             </StackPanel>
                         </Grid>
                     </DataTemplate>

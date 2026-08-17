@@ -83,6 +83,18 @@
                     <NavigationViewItem Content="Oppositions" Tag="Oppositions">
                         <NavigationViewItem.Icon><FontIcon Glyph="&#xE7BA;" /></NavigationViewItem.Icon>
                     </NavigationViewItem>
+                    <NavigationViewItem Content="Automation" Tag="Automation">
+                        <NavigationViewItem.Icon><FontIcon Glyph="&#xE9F5;" /></NavigationViewItem.Icon>
+                    </NavigationViewItem>
+                    <NavigationViewItem Content="Renewals" Tag="Renewals">
+                        <NavigationViewItem.Icon><FontIcon Glyph="&#xE823;" /></NavigationViewItem.Icon>
+                    </NavigationViewItem>
+                    <NavigationViewItem Content="Status Tracker" Tag="StatusTracker">
+                        <NavigationViewItem.Icon><FontIcon Glyph="&#xE9D5;" /></NavigationViewItem.Icon>
+                    </NavigationViewItem>
+                    <NavigationViewItem Content="TM Search" Tag="TrademarkSearch">
+                        <NavigationViewItem.Icon><FontIcon Glyph="&#xE721;" /></NavigationViewItem.Icon>
+                    </NavigationViewItem>
                     <NavigationViewItem Content="Journal Watch" Tag="Journal">
                         <NavigationViewItem.Icon><FontIcon Glyph="&#xE8A5;" /></NavigationViewItem.Icon>
                     </NavigationViewItem>

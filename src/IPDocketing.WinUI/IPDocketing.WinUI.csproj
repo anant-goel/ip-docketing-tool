@@ -7,7 +7,11 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <Platforms>x86;x64;ARM64</Platforms>
     <RuntimeIdentifiers>win-x86;win-x64;win-arm64</RuntimeIdentifiers>
-    <PublishProfile>win-$(Platform).pubxml</PublishProfile>
+    <!-- PublishProfile removed in phase 30. It pointed at Properties\PublishProfiles\
+         win-x64.pubxml, which does not exist in this repo - and on newer SDKs a
+         PublishProfile that can't be resolved fails the publish step outright.
+         The workflow passes the runtime identifier and self-contained flag on the command line,
+         which is what was actually driving the publish anyway. -->
     <UseWinUI>true</UseWinUI>
     <EnableMsixTooling>true</EnableMsixTooling>
     <Nullable>enable</Nullable>
@@ -19,14 +23,57 @@
     <AssemblyName>IPDocketing</AssemblyName>
     <Product>IP Docketing</Product>
     <Company>IP Docketing</Company>
-    <Version>1.0.0</Version>
+    <Version>1.1.0</Version>
+    <AssemblyVersion>1.1.0.0</AssemblyVersion>
+    <FileVersion>1.1.0.0</FileVersion>
+    <Description>IP portfolio, deadline and trademark docketing for patents, trademarks, oppositions and journal watch.</Description>
+    <!-- Nullable warnings are informative here, not fatal - a warning-as-error
+         policy on a UI project this size just blocks builds over binding-time
+         nullability the compiler can't see through. -->
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+
+    <!-- Publish hygiene. DebugType=none stops .pdb files being emitted into the
+         publish folder at all; SatelliteResourceLanguages keeps managed
+         satellite assemblies to English. Neither of these touches the native
+         .mui resources the Windows App SDK copies - those are handled by the
+         TrimPublishOutput target below, which is the only lever that works on
+         them. -->
+    <DebugType Condition="'$(Configuration)' == 'Release'">none</DebugType>
+    <DebugSymbols Condition="'$(Configuration)' == 'Release'">false</DebugSymbols>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+
+    <!-- Set false to publish everything, if you ever suspect the trim. -->
+    <TrimPublishOutput Condition="'$(TrimPublishOutput)' == ''">true</TrimPublishOutput>
+
+    <!-- Package versions as overridable properties.
+         None of this has been through a compiler yet, and the two most likely
+         causes of a first-build failure are version resolution on these. Having
+         them as properties means a fix is one command-line switch, not a hunt
+         through project files:
+             dotnet build -p:WindowsAppSdkVersion=1.7.250606001
+         See docs/BUILD-TROUBLESHOOTING.md for the known-good fallbacks. -->
+    <WindowsAppSdkVersion Condition="'$(WindowsAppSdkVersion)' == ''">2.4.0</WindowsAppSdkVersion>
+    <WindowsSdkBuildToolsVersion Condition="'$(WindowsSdkBuildToolsVersion)' == ''">10.0.26100.4654</WindowsSdkBuildToolsVersion>
+    <PdfPigVersion Condition="'$(PdfPigVersion)' == ''">0.1.9</PdfPigVersion>
+    <WebView2Version Condition="'$(WebView2Version)' == ''">1.0.3719.77</WebView2Version>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.4.0" />
-    <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.26100.4654" />
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="$(WindowsAppSdkVersion)" />
+    <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="$(WindowsSdkBuildToolsVersion)" />
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.3.2" />
-    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.3719.77" />
+    <PackageReference Include="Microsoft.Web.WebView2" Version="$(WebView2Version)" />
+    <!-- Referenced directly (not just transitively through Core) because
+         PdfTextExtractor calls UglyToad.PdfPig by name. -->
+    <PackageReference Include="PdfPig" Version="$(PdfPigVersion)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The reference implementations under /third_party are documentation, not
+         build input. They are outside this project's directory so the default
+         globs never see them, but stating it makes the intent unambiguous. -->
+    <Compile Remove="..\..\third_party\**" />
+    <Page Remove="..\..\third_party\**" />
   </ItemGroup>
 
   <ItemGroup>
@@ -38,4 +85,89 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
   </ItemGroup>
+
+  <!--
+    Trims the self-contained publish output.
+
+    Why this exists: Windows App SDK 2.x self-contained drags in the whole
+    Windows AI platform - ONNX Runtime, DirectML, the Phi Silica / content
+    safety / imaging projections, Widgets and Search - regardless of whether the
+    app references any of it. This app references none of it: there is no
+    `Microsoft.Windows.AI` or `Microsoft.ML` anywhere in the source. That was
+    about 49 MB across 36 files, plus 88 localisation folders of native .mui
+    resources for languages the UI does not ship strings in.
+
+    These are all lazily activated native components - nothing loads them unless
+    a WinRT class from those namespaces is activated, which this app never does.
+    Removing them is safe *for this app*; it would not be for one that used
+    them.
+
+    Guard rails: the target lists what it deleted and fails the build if the
+    executable, the Windows App SDK runtime, or the WebView2 loader went
+    missing, so an over-eager pattern can never ship a broken folder quietly.
+    Set the TrimPublishOutput property to false to disable.
+  -->
+  <Target Name="TrimPublishOutput" AfterTargets="Publish" Condition="'$(TrimPublishOutput)' == 'true'">
+
+    <ItemGroup>
+      <!-- Windows AI platform: unreferenced by this app. -->
+      <_TrimFiles Include="$(PublishDir)Microsoft.Windows.AI*.dll" />
+      <_TrimFiles Include="$(PublishDir)Microsoft.Windows.AI*.winmd" />
+      <_TrimFiles Include="$(PublishDir)Microsoft.Windows.Vision*.*" />
+      <_TrimFiles Include="$(PublishDir)Microsoft.Graphics.Imaging*.*" />
+      <_TrimFiles Include="$(PublishDir)Microsoft.ML.OnnxRuntime.dll" />
+      <_TrimFiles Include="$(PublishDir)onnxruntime.dll" />
+      <_TrimFiles Include="$(PublishDir)onnxruntime*.dll" />
+      <_TrimFiles Include="$(PublishDir)DirectML.dll" />
+
+      <!-- Shell integrations this app does not use. -->
+      <_TrimFiles Include="$(PublishDir)Microsoft.Windows.Widgets*.*" />
+      <_TrimFiles Include="$(PublishDir)Microsoft.Windows.Search*.*" />
+
+      <!-- Debug symbols and design-time only assemblies. -->
+      <_TrimFiles Include="$(PublishDir)*.pdb" />
+      <_TrimFiles Include="$(PublishDir)Microsoft.DiaSymReader.Native.*.dll" />
+      <_TrimFiles Include="$(PublishDir)Microsoft.UI.Designer.dll" />
+      <_TrimFiles Include="$(PublishDir)*.xml" Exclude="$(PublishDir)*.config.xml" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <!-- Explicitly protected. The OCR path renders PDF pages through
+           Windows.Data.Pdf and reads them with Windows.Media.Ocr, both OS
+           components, so nothing extra is needed for OCR itself - but PdfPig
+           does the text-layer read and must survive the trim. -->
+      <_TrimFiles Remove="$(PublishDir)UglyToad.PdfPig*.dll" />
+      <_TrimFiles Remove="$(PublishDir)Microsoft.WindowsAppRuntime*.dll" />
+    </ItemGroup>
+
+    <Delete Files="@(_TrimFiles)" ContinueOnError="true">
+      <Output TaskParameter="DeletedFiles" ItemName="_TrimDeleted" />
+    </Delete>
+
+    <!-- Native .mui resource folders for languages this app has no strings in.
+         Matched by the two-or-three-part locale naming the SDK uses (or-IN,
+         sr-Latn-RS) and always keeping en-us. -->
+    <ItemGroup>
+      <_LocaleMui Include="$(PublishDir)*\**\*.mui" />
+      <_LocaleMuiToDelete Include="@(_LocaleMui)"
+                          Condition="!$([System.String]::Copy('%(RecursiveDir)').StartsWith('en-'))" />
+    </ItemGroup>
+
+    <Delete Files="@(_LocaleMuiToDelete)" ContinueOnError="true" />
+    <RemoveDir Directories="@(_LocaleMuiToDelete->'%(RootDir)%(Directory)')" ContinueOnError="true" />
+
+    <!-- Guard rails: anything essential missing is a hard failure, not a
+         surprise on the user's machine. -->
+    <Error Condition="!Exists('$(PublishDir)IPDocketing.exe')"
+           Text="TrimPublishOutput removed or never produced IPDocketing.exe - aborting." />
+    <Error Condition="!Exists('$(PublishDir)Microsoft.WindowsAppRuntime.dll')"
+           Text="TrimPublishOutput removed Microsoft.WindowsAppRuntime.dll - the trim patterns are too broad." />
+    <Error Condition="!Exists('$(PublishDir)Microsoft.ui.xaml.dll')"
+           Text="TrimPublishOutput removed Microsoft.ui.xaml.dll - the trim patterns are too broad." />
+    <Error Condition="!Exists('$(PublishDir)WebView2Loader.dll')"
+           Text="TrimPublishOutput removed WebView2Loader.dll - the embedded IP India browser would not start." />
+
+    <Message Importance="high" Text="TrimPublishOutput: removed @(_TrimDeleted->Count()) unused runtime file(s) and non-English .mui resources." />
+  </Target>
+
 </Project>

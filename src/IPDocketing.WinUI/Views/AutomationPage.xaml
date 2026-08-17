@@ -1,0 +1,179 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="IPDocketing.WinUI.Views.AutomationPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Background="Transparent">
+
+    <ScrollViewer>
+        <Grid Padding="30,24,30,30" RowSpacing="14">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <Grid ColumnSpacing="12">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel>
+                    <TextBlock Text="Automation" Style="{StaticResource PageTitleStyle}" />
+                    <TextBlock Style="{StaticResource SubtitleStyle}" Margin="0,4,0,0" TextWrapping="Wrap"
+                               Text="The Journal pipeline runs on its own — discover, download, read, parse, watch. The register search does not, and cannot." />
+                </StackPanel>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                    <ToggleSwitch x:Name="AutoSyncToggle" OnContent="Auto" OffContent="Manual"
+                                  Toggled="AutoSyncToggle_Toggled" />
+                    <Button x:Name="RunNowButton" Content="Run now" Style="{StaticResource MergedAccentButtonStyle}"
+                            Click="RunNow_Click" />
+                </StackPanel>
+            </Grid>
+
+            <Border Grid.Row="1" Style="{StaticResource GlassSurfaceCompactStyle}">
+                <StackPanel Spacing="8">
+                    <TextBlock Text="STATUS" Style="{StaticResource GlassEyebrowStyle}" />
+                    <TextBlock x:Name="StatusText" FontSize="14" TextWrapping="Wrap"
+                               Foreground="{ThemeResource TextPrimaryBrush}" Text="Idle." />
+                    <ProgressBar x:Name="SyncProgress" IsIndeterminate="True" Height="3"
+                                 Visibility="Collapsed" Foreground="{StaticResource AccentBrush}" />
+                    <TextBlock x:Name="LastRunText" FontSize="11"
+                               Foreground="{ThemeResource TextTertiaryBrush}" />
+                </StackPanel>
+            </Border>
+
+            <!-- The honest split. This is on screen rather than buried in a
+                 readme because misunderstanding it is how someone ends up
+                 believing their register data is current when it isn't. -->
+            <Grid Grid.Row="2" ColumnSpacing="14">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+
+                <Border Style="{StaticResource GlassSurfaceCompactStyle}">
+                    <StackPanel Spacing="8">
+                        <Border Style="{StaticResource PillBadgeStyle}" HorizontalAlignment="Left">
+                            <TextBlock Text="FULLY AUTOMATIC" FontSize="10" FontWeight="Bold"
+                                       Foreground="{StaticResource SuccessBrush}" />
+                        </Border>
+                        <TextBlock Text="Journal pipeline" FontWeight="SemiBold" FontSize="15"
+                                   Foreground="{ThemeResource TextPrimaryBrush}" />
+                        <TextBlock TextWrapping="Wrap" FontSize="12"
+                                   Foreground="{ThemeResource TextSecondaryBrush}"
+                                   Text="Finds new weekly issues, downloads the PDFs, reads the text (OCR where a page is image-only), parses the published marks, runs the similarity watch and raises conflict alerts. No clicks, no login, no CAPTCHA — the Journal is published openly and reading it on a schedule is what it's for." />
+                    </StackPanel>
+                </Border>
+
+                <Border Grid.Column="1" Style="{StaticResource GlassSurfaceCompactStyle}">
+                    <StackPanel Spacing="8">
+                        <Border Style="{StaticResource PillBadgeStyle}" HorizontalAlignment="Left">
+                            <TextBlock Text="ONE SOLVE, THEN UNATTENDED" FontSize="10" FontWeight="Bold"
+                                       Foreground="{StaticResource WarningBrush}" />
+                        </Border>
+                        <TextBlock Text="Register status and documents" FontWeight="SemiBold" FontSize="15"
+                                   Foreground="{ThemeResource TextPrimaryBrush}" />
+                        <TextBlock TextWrapping="Wrap" FontSize="12"
+                                   Foreground="{ThemeResource TextSecondaryBrush}"
+                                   Text="You solve one CAPTCHA on the e-Status page; the bulk queue then works through hundreds of application numbers inside that session without further input. Go to IP India Portal to start one." />
+                        <Button Content="Open portal" Style="{StaticResource MergedGlassMiniButtonStyle}"
+                                HorizontalAlignment="Left" Click="OpenPortal_Click" />
+                    </StackPanel>
+                </Border>
+
+                <Border Grid.Column="2" Style="{StaticResource GlassSurfaceCompactStyle}">
+                    <StackPanel Spacing="8">
+                        <Border Style="{StaticResource PillBadgeStyle}" HorizontalAlignment="Left">
+                            <TextBlock Text="NOT AUTOMATED" FontSize="10" FontWeight="Bold"
+                                       Foreground="{StaticResource DangerBrush}" />
+                        </Border>
+                        <TextBlock Text="The CAPTCHA and CEFS sign-in" FontWeight="SemiBold" FontSize="15"
+                                   Foreground="{ThemeResource TextPrimaryBrush}" />
+                        <TextBlock TextWrapping="Wrap" FontSize="12"
+                                   Foreground="{ThemeResource TextSecondaryBrush}"
+                                   Text="The Registry put a CAPTCHA on the register search precisely to say that automated bulk access isn't on offer. This app doesn't defeat it, and won't. Your credentials stay yours — the app never handles them." />
+                    </StackPanel>
+                </Border>
+            </Grid>
+
+            <Border Grid.Row="3" Style="{StaticResource GlassSurfaceCompactStyle}">
+                <Grid ColumnSpacing="16">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel>
+                        <TextBlock Text="Check every" FontSize="11" Foreground="{ThemeResource TextTertiaryBrush}" />
+                        <ComboBox x:Name="IntervalBox" MinWidth="140" SelectedIndex="1" SelectionChanged="Interval_Changed">
+                            <ComboBoxItem Content="1 hour" Tag="1" />
+                            <ComboBoxItem Content="6 hours" Tag="6" />
+                            <ComboBoxItem Content="12 hours" Tag="12" />
+                            <ComboBoxItem Content="24 hours" Tag="24" />
+                        </ComboBox>
+                    </StackPanel>
+                    <StackPanel Grid.Column="1">
+                        <TextBlock Text="Issues per run" FontSize="11" Foreground="{ThemeResource TextTertiaryBrush}" />
+                        <ComboBox x:Name="BatchBox" MinWidth="120" SelectedIndex="1" SelectionChanged="Interval_Changed">
+                            <ComboBoxItem Content="2" Tag="2" />
+                            <ComboBoxItem Content="4" Tag="4" />
+                            <ComboBoxItem Content="8" Tag="8" />
+                        </ComboBox>
+                    </StackPanel>
+                    <Button Grid.Column="2" Content="Open PDF library" VerticalAlignment="Bottom"
+                            Style="{StaticResource MergedGlassButtonBaseStyle}" Click="OpenLibrary_Click" />
+                    <TextBlock Grid.Column="3" VerticalAlignment="Bottom" FontSize="11" TextWrapping="Wrap"
+                               Foreground="{ThemeResource TextTertiaryBrush}"
+                               Text="A batch cap stops a first run pulling years of back issues at once. Downloads resume where they stopped." />
+                </Grid>
+            </Border>
+
+            <Border Grid.Row="4" Style="{StaticResource GlassSurfaceStyle}" Padding="6" MinHeight="240">
+                <Grid>
+                    <ListView x:Name="IssueList" Background="Transparent" SelectionMode="None">
+                        <ListView.ItemTemplate>
+                            <DataTemplate>
+                                <Grid Padding="12,10" ColumnSpacing="14">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="12" />
+                                        <ColumnDefinition Width="160" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="150" />
+                                    </Grid.ColumnDefinitions>
+                                    <Ellipse Width="9" Height="9" Fill="{Binding StageBrush}" VerticalAlignment="Center" />
+                                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                        <TextBlock Text="{Binding IssueNumber}" FontWeight="SemiBold"
+                                                   Foreground="{ThemeResource TextPrimaryBrush}" />
+                                        <TextBlock Text="{Binding PublishedLabel}" FontSize="11"
+                                                   Foreground="{ThemeResource TextTertiaryBrush}" />
+                                    </StackPanel>
+                                    <TextBlock Grid.Column="2" Text="{Binding Detail}" VerticalAlignment="Center"
+                                               FontSize="12" TextWrapping="Wrap"
+                                               Foreground="{ThemeResource TextSecondaryBrush}" />
+                                    <Border Grid.Column="3" Style="{StaticResource PillBadgeStyle}"
+                                            HorizontalAlignment="Left" VerticalAlignment="Center">
+                                        <TextBlock Text="{Binding Stage}" FontSize="11" FontWeight="SemiBold"
+                                                   Foreground="{Binding StageBrush}" />
+                                    </Border>
+                                </Grid>
+                            </DataTemplate>
+                        </ListView.ItemTemplate>
+                    </ListView>
+
+                    <StackPanel x:Name="EmptyState" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="10">
+                        <TextBlock Text="No Journal issues tracked yet" FontSize="16" FontWeight="SemiBold"
+                                   HorizontalAlignment="Center" Foreground="{ThemeResource TextPrimaryBrush}" />
+                        <TextBlock Text="Press Run now, or switch automation on and leave it — the first pass picks up the most recent issues."
+                                   HorizontalAlignment="Center" TextWrapping="Wrap" MaxWidth="440" TextAlignment="Center"
+                                   Foreground="{ThemeResource TextSecondaryBrush}" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+        </Grid>
+    </ScrollViewer>
+</Page>

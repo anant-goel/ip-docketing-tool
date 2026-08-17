@@ -184,6 +184,73 @@ public sealed partial class MattersPage : Page
         pincodeRow.Children.Add(pincodeBox);
         pincodeRow.Children.Add(pincodeLookupButton);
         var classBox = new TextBox { Header = "Nice class", PlaceholderText = "e.g. 25", Text = existing?.NiceClass ?? "" };
+
+        // Phase 30: Status, FilingDate, GrantNumber, RegistrationDate,
+        // RenewalDueDate and PortalAlert were all in the model but had no way in
+        // through the UI - a matter could only ever be Pending with no filing
+        // date, which made the dashboard metrics and the docx status tracker
+        // structurally unable to show anything real. All six are editable now.
+        var statusPicker = new ComboBox
+        {
+            Header = "Current status",
+            ItemsSource = Enum.GetValues<MatterStatus>(),
+            SelectedIndex = existing is null ? 0 : (int)existing.Status
+        };
+        var registrationNumberBox = new TextBox
+        {
+            Header = "Registration number (once registered)",
+            PlaceholderText = "e.g. 4567890",
+            Text = existing?.GrantNumber ?? ""
+        };
+        var attorneyCodeBox = new TextBox
+        {
+            Header = "Agent / attorney registration code",
+            PlaceholderText = "The code the Registry files under",
+            Text = existing?.AttorneyCode ?? ""
+        };
+        var alertBox = new TextBox
+        {
+            Header = "Portal alert (as shown on the TMR status page)",
+            PlaceholderText = "e.g. Opposed / Objected / Abandoned",
+            Text = existing?.PortalAlert ?? ""
+        };
+
+        // CalendarDatePicker, unlike DatePicker, has a genuine null state - so a
+        // matter with no filing date stays that way instead of silently taking
+        // today's date the moment the dialog opens.
+        var filingDatePicker = new CalendarDatePicker
+        {
+            Header = "Filing date",
+            PlaceholderText = "Not filed",
+            Date = existing?.FilingDate
+        };
+        var registrationDatePicker = new CalendarDatePicker
+        {
+            Header = "Registration date",
+            PlaceholderText = "Not registered",
+            Date = existing?.RegistrationDate
+        };
+        var renewalDatePicker = new CalendarDatePicker
+        {
+            Header = "Renewal due",
+            PlaceholderText = "Not set",
+            Date = existing?.RenewalDueDate
+        };
+
+        // India: registration + 10 years, Section 25. Offered rather than
+        // applied, because the renewal anchor differs by jurisdiction and a
+        // silently computed date on a renewal is exactly the kind of thing that
+        // becomes a malpractice claim.
+        var deriveRenewalButton = new Button
+        {
+            Content = "Set renewal to registration + 10 years",
+            Margin = new Microsoft.UI.Xaml.Thickness(0, 4, 0, 0)
+        };
+        deriveRenewalButton.Click += (_, _) =>
+        {
+            if (registrationDatePicker.Date is { } registered)
+                renewalDatePicker.Date = registered.AddYears(10);
+        };
         var markTypePicker = new ComboBox
         {
             Header = "Mark type",
@@ -201,7 +268,12 @@ public sealed partial class MattersPage : Page
 
         var panel = new StackPanel { Spacing = 10, Width = 380 };
         foreach (var control in new Microsoft.UI.Xaml.FrameworkElement[]
-                 { numberBox, applicationNumberBox, countryBox, titleBox, clientBox, typePicker, proprietorBox, attorneyBox, stateBox, pincodeRow, pincodeStatusText, classBox, markTypePicker, assigneePicker })
+                 {
+                     numberBox, applicationNumberBox, registrationNumberBox, countryBox, titleBox, clientBox,
+                     typePicker, statusPicker, proprietorBox, attorneyBox, stateBox, pincodeRow, pincodeStatusText,
+                     classBox, markTypePicker, attorneyCodeBox, filingDatePicker, registrationDatePicker, renewalDatePicker,
+                     deriveRenewalButton, alertBox, assigneePicker
+                 })
             panel.Children.Add(control);
 
         var scroll = new ScrollViewer { Content = panel, MaxHeight = 480 };
@@ -221,6 +293,14 @@ public sealed partial class MattersPage : Page
 
         var assignedToId = (assigneePicker.SelectedItem as TeamMember)?.Id;
 
+        // Word/device only means something for a trademark. Previously every
+        // patent and copyright matter got stamped MarkType.Word, which then
+        // showed up as noise in the docx section 6 word/device split.
+        var selectedType = (MatterType)typePicker.SelectedItem;
+        MarkType? markTypeValue = selectedType == MatterType.Trademark
+            ? (MarkType)markTypePicker.SelectedItem
+            : null;
+
         if (existing is null)
         {
             App.Matters.Add(new Matter
@@ -235,7 +315,14 @@ public sealed partial class MattersPage : Page
                 AttorneyOfRecord = string.IsNullOrWhiteSpace(attorneyBox.Text) ? null : attorneyBox.Text,
                 State = string.IsNullOrWhiteSpace(stateBox.Text) ? null : stateBox.Text,
                 NiceClass = string.IsNullOrWhiteSpace(classBox.Text) ? null : classBox.Text,
-                MarkType = (MarkType)markTypePicker.SelectedItem,
+                MarkType = markTypeValue,
+                Status = (MatterStatus)statusPicker.SelectedItem,
+                GrantNumber = Trimmed(registrationNumberBox.Text),
+                PortalAlert = Trimmed(alertBox.Text),
+                AttorneyCode = Trimmed(attorneyCodeBox.Text),
+                FilingDate = filingDatePicker.Date?.DateTime,
+                RegistrationDate = registrationDatePicker.Date?.DateTime,
+                RenewalDueDate = renewalDatePicker.Date?.DateTime,
                 AssignedToId = assignedToId
             });
         }
@@ -251,12 +338,241 @@ public sealed partial class MattersPage : Page
             existing.AttorneyOfRecord = string.IsNullOrWhiteSpace(attorneyBox.Text) ? null : attorneyBox.Text;
             existing.State = string.IsNullOrWhiteSpace(stateBox.Text) ? null : stateBox.Text;
             existing.NiceClass = string.IsNullOrWhiteSpace(classBox.Text) ? null : classBox.Text;
-            existing.MarkType = (MarkType)markTypePicker.SelectedItem;
+            existing.MarkType = markTypeValue;
+            existing.Status = (MatterStatus)statusPicker.SelectedItem;
+            existing.GrantNumber = Trimmed(registrationNumberBox.Text);
+            existing.PortalAlert = Trimmed(alertBox.Text);
+            existing.AttorneyCode = Trimmed(attorneyCodeBox.Text);
+            existing.FilingDate = filingDatePicker.Date?.DateTime;
+            existing.RegistrationDate = registrationDatePicker.Date?.DateTime;
+            existing.RenewalDueDate = renewalDatePicker.Date?.DateTime;
             existing.AssignedToId = assignedToId;
             App.Matters.Update(existing);
         }
 
         LoadMatters(App.Matters.GetAll());
+    }
+
+    /// <summary>
+    /// CSV import. Two-phase on purpose: the file is parsed and reported on
+    /// first, and nothing is written until the preview is accepted. A bulk
+    /// import that half-succeeds on a malformed sheet is worse than one that
+    /// refuses, because the damage is spread across hundreds of rows nobody
+    /// will re-check afterwards.
+    /// </summary>
+    private async void Import_Click(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
+    {
+        var picker = new Windows.Storage.Pickers.FileOpenPicker();
+        picker.FileTypeFilter.Add(".csv");
+        picker.FileTypeFilter.Add(".txt");
+
+        // Unpackaged WinUI pickers need an owning window handle, or they throw.
+        WinRT.Interop.InitializeWithWindow.Initialize(picker,
+            WinRT.Interop.WindowNative.GetWindowHandle(App.MainWindow));
+
+        var file = await picker.PickSingleFileAsync();
+        if (file is null) return;
+
+        try
+        {
+            var text = await Windows.Storage.FileIO.ReadTextAsync(file);
+            var report = App.PortfolioImport.Validate(text);
+
+            var summary = new System.Text.StringBuilder();
+            summary.AppendLine($"{report.NewCount} new matter(s), {report.UpdateCount} existing matter(s) would be updated.");
+            summary.AppendLine();
+
+            if (report.Issues.Count > 0)
+            {
+                var fatal = report.Issues.Where(i => i.IsFatal).ToList();
+                if (fatal.Count > 0)
+                {
+                    summary.AppendLine("ERRORS — these must be fixed before importing:");
+                    foreach (var issue in fatal.Take(10))
+                        summary.AppendLine($"  Line {issue.LineNumber} [{issue.Column}]: {issue.Message}");
+                    summary.AppendLine();
+                }
+
+                var warnings = report.Issues.Where(i => !i.IsFatal).ToList();
+                if (warnings.Count > 0)
+                {
+                    summary.AppendLine($"Warnings ({warnings.Count}) — the import can proceed, but check these:");
+                    foreach (var issue in warnings.Take(25))
+                        summary.AppendLine($"  Line {issue.LineNumber} [{issue.Column}]: {issue.Message}");
+                    if (warnings.Count > 25) summary.AppendLine($"  ...and {warnings.Count - 25} more.");
+                }
+            }
+            else
+            {
+                summary.AppendLine("No problems found.");
+            }
+
+            var body = new TextBox
+            {
+                Text = summary.ToString(),
+                IsReadOnly = true,
+                AcceptsReturn = true,
+                TextWrapping = Microsoft.UI.Xaml.TextWrapping.Wrap,
+                FontSize = 12,
+                Height = 340,
+                Width = 520
+            };
+
+            var dialog = new ContentDialog
+            {
+                XamlRoot = XamlRoot,
+                Title = report.HasFatalIssues ? "Import blocked" : "Preview import",
+                Content = body,
+                PrimaryButtonText = report.HasFatalIssues ? string.Empty : "Import",
+                CloseButtonText = report.HasFatalIssues ? "Close" : "Cancel",
+                DefaultButton = ContentDialogButton.Close
+            };
+
+            if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
+
+            var (created, updated) = App.PortfolioImport.Import(report);
+
+            // Newly imported registrations need their s.25 dates straight away -
+            // an imported portfolio with no renewal deadlines is the exact
+            // failure this app exists to prevent.
+            var renewalResult = App.Renewals.DocketRenewals();
+
+            LoadMatters(App.Matters.GetAll());
+
+            await ShowInfo("Import complete",
+                $"{created} matter(s) created, {updated} updated.\n" +
+                $"{renewalResult.DeadlinesCreated} renewal deadline(s) docketed automatically.");
+        }
+        catch (Exception ex)
+        {
+            await ShowInfo("Import failed", ex.Message);
+        }
+    }
+
+    private async void Export_Click(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
+    {
+        try
+        {
+            var directory = System.IO.Path.Combine(App.AppDataDirectory, "Exports");
+            System.IO.Directory.CreateDirectory(directory);
+
+            var path = System.IO.Path.Combine(directory, $"portfolio_{DateTime.Now:yyyyMMdd_HHmmss}.csv");
+            await System.IO.File.WriteAllTextAsync(path, App.PortfolioImport.ExportCsv(),
+                System.Text.Encoding.UTF8);
+
+            // A blank template alongside it, so the round trip is obvious.
+            var templatePath = System.IO.Path.Combine(directory, "import-template.csv");
+            await System.IO.File.WriteAllTextAsync(templatePath, App.PortfolioImport.BuildTemplateCsv(),
+                System.Text.Encoding.UTF8);
+
+            App.Audit.Log("Export", "Portfolio", 0, $"Portfolio exported to {path}.");
+            await ShowInfo("Exported",
+                $"Portfolio written to:\n{path}\n\nA blank import template was saved alongside it as import-template.csv.");
+        }
+        catch (Exception ex)
+        {
+            await ShowInfo("Export failed", ex.Message);
+        }
+    }
+
+    private async System.Threading.Tasks.Task ShowInfo(string title, string content)
+    {
+        var dialog = new ContentDialog
+        {
+            XamlRoot = XamlRoot,
+            Title = title,
+            Content = new ScrollViewer
+            {
+                Content = new TextBlock { Text = content, TextWrapping = Microsoft.UI.Xaml.TextWrapping.Wrap },
+                MaxHeight = 400
+            },
+            CloseButtonText = "OK"
+        };
+        await dialog.ShowAsync();
+    }
+
+    private static string? Trimmed(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    /// <summary>
+    /// docx sections 2 and 3 both call for "a tool to assign a particular TM to
+    /// a team member". Reassignment was previously buried inside the full edit
+    /// dialog, which is far too much friction for the one field that changes
+    /// most often - this is a single dropdown.
+    /// </summary>
+    private async void AssignMatter_Click(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
+    {
+        if (sender is not Button { Tag: int id }) return;
+
+        var matter = App.Matters.GetById(id);
+        if (matter is null) return;
+
+        var teamMembers = App.Team.GetActive();
+        if (teamMembers.Count == 0)
+        {
+            var noTeam = new ContentDialog
+            {
+                XamlRoot = XamlRoot,
+                Title = "No team members yet",
+                Content = "There are no active team members to assign to. Add them first — " +
+                          "the seed database ships with two as examples.",
+                CloseButtonText = "OK"
+            };
+            await noTeam.ShowAsync();
+            return;
+        }
+
+        var picker = new ComboBox
+        {
+            Header = "Assign to",
+            ItemsSource = teamMembers,
+            DisplayMemberPath = "Name",
+            MinWidth = 300,
+            SelectedIndex = matter.AssignedToId is null
+                ? -1
+                : teamMembers.FindIndex(t => t.Id == matter.AssignedToId)
+        };
+        var unassign = new CheckBox { Content = "Leave unassigned", IsChecked = matter.AssignedToId is null };
+
+        var panel = new StackPanel { Spacing = 12, Width = 320 };
+        panel.Children.Add(new TextBlock
+        {
+            Text = $"{matter.MatterNumber} — {matter.Title}",
+            TextWrapping = Microsoft.UI.Xaml.TextWrapping.Wrap,
+            Opacity = 0.75
+        });
+        panel.Children.Add(picker);
+        panel.Children.Add(unassign);
+
+        var dialog = new ContentDialog
+        {
+            XamlRoot = XamlRoot,
+            Title = "Assign matter",
+            Content = panel,
+            PrimaryButtonText = "Save",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Primary
+        };
+
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
+
+        matter.AssignedToId = unassign.IsChecked == true
+            ? null
+            : (picker.SelectedItem as TeamMember)?.Id;
+        App.Matters.Update(matter);
+        App.Audit.Log("Assign", "Matter", matter.Id,
+            matter.AssignedToId is null
+                ? "Left unassigned."
+                : $"Assigned to team member {matter.AssignedToId}.");
+
+        LoadMatters(App.Matters.GetAll());
+    }
+
+    /// <summary>Jumps to the full prosecution/opposition history for this mark.</summary>
+    private void TraceMatter_Click(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
+    {
+        if (sender is Button { Tag: int id })
+            Frame?.Navigate(typeof(StatusTrackerPage), id);
     }
 
     public sealed class MatterRow

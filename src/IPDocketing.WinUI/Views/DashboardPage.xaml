@@ -18,6 +18,7 @@
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
             <Grid Grid.Row="0" ColumnSpacing="14">
                 <Grid.ColumnDefinitions>
@@ -26,8 +27,10 @@
                 </Grid.ColumnDefinitions>
                 <TextBlock Grid.Column="0" Text="Dashboard" Style="{StaticResource PageTitleStyle}" />
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
-                    <Button Content="+ Add matter" Style="{StaticResource LiquidButtonStyle}" Click="AddMatter_Click" />
-                    <Button Content="Assign to team member" Style="{StaticResource GlassButtonStyle}" Click="AssignTeamMember_Click" />
+                    <Button Content="+ Add matter" Style="{StaticResource MergedAccentButtonStyle}" Click="AddMatter_Click" />
+                    <Button Content="Notify team" Style="{StaticResource MergedGlassButtonBaseStyle}" Click="NotifyTeam_Click"
+                            ToolTipService.ToolTip="Build a per-person digest of approaching and overdue deadlines" />
+                    <Button Content="Assign to team member" Style="{StaticResource MergedGlassButtonBaseStyle}" Click="AssignTeamMember_Click" />
                 </StackPanel>
             </Grid>
             <TextBlock Text="Portfolio health and the deadlines that need attention next."
@@ -41,7 +44,7 @@
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
 
-                <Border Grid.Column="0" Style="{StaticResource GlassCardStyle}">
+                <Border Grid.Column="0" Style="{StaticResource GlassSurfaceStyle}">
                     <StackPanel Spacing="12">
                         <StackPanel Orientation="Horizontal" Spacing="8">
                             <Ellipse Width="8" Height="8" Fill="{StaticResource DangerBrush}" VerticalAlignment="Center" />
@@ -52,7 +55,7 @@
                                    Foreground="{StaticResource DangerBrush}" />
                     </StackPanel>
                 </Border>
-                <Border Grid.Column="1" Style="{StaticResource GlassCardStyle}">
+                <Border Grid.Column="1" Style="{StaticResource GlassSurfaceStyle}">
                     <StackPanel Spacing="12">
                         <StackPanel Orientation="Horizontal" Spacing="8">
                             <Ellipse Width="8" Height="8" Fill="{StaticResource WarningBrush}" VerticalAlignment="Center" />
@@ -63,7 +66,7 @@
                                    Foreground="{StaticResource WarningBrush}" />
                     </StackPanel>
                 </Border>
-                <Border Grid.Column="2" Style="{StaticResource GlassCardStyle}">
+                <Border Grid.Column="2" Style="{StaticResource GlassSurfaceStyle}">
                     <StackPanel Spacing="12">
                         <StackPanel Orientation="Horizontal" Spacing="8">
                             <Ellipse Width="8" Height="8" Fill="{StaticResource InfoBrush}" VerticalAlignment="Center" />
@@ -74,7 +77,7 @@
                                    Foreground="{StaticResource InfoBrush}" />
                     </StackPanel>
                 </Border>
-                <Border Grid.Column="3" Style="{StaticResource GlassCardStyle}">
+                <Border Grid.Column="3" Style="{StaticResource GlassSurfaceStyle}">
                     <StackPanel Spacing="12">
                         <StackPanel Orientation="Horizontal" Spacing="8">
                             <Ellipse Width="8" Height="8" Fill="{StaticResource SuccessBrush}" VerticalAlignment="Center" />
@@ -95,7 +98,7 @@
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
-                <Border Grid.Column="0" Style="{StaticResource GlassCardStyle}">
+                <Border Grid.Column="0" Style="{StaticResource GlassSurfaceStyle}">
                     <StackPanel Spacing="12">
                         <StackPanel Orientation="Horizontal" Spacing="8">
                             <Ellipse Width="8" Height="8" Fill="{StaticResource WarningBrush}" VerticalAlignment="Center" />
@@ -106,7 +109,7 @@
                                    Foreground="{StaticResource WarningBrush}" />
                     </StackPanel>
                 </Border>
-                <Border Grid.Column="1" Style="{StaticResource GlassCardStyle}">
+                <Border Grid.Column="1" Style="{StaticResource GlassSurfaceStyle}">
                     <StackPanel Spacing="12">
                         <StackPanel Orientation="Horizontal" Spacing="8">
                             <Ellipse Width="8" Height="8" Fill="{StaticResource DangerBrush}" VerticalAlignment="Center" />
@@ -117,7 +120,7 @@
                                    Foreground="{StaticResource DangerBrush}" />
                     </StackPanel>
                 </Border>
-                <Border Grid.Column="2" Style="{StaticResource GlassCardStyle}">
+                <Border Grid.Column="2" Style="{StaticResource GlassSurfaceStyle}">
                     <StackPanel Spacing="12">
                         <StackPanel Orientation="Horizontal" Spacing="8">
                             <Ellipse Width="8" Height="8" Fill="{StaticResource InfoBrush}" VerticalAlignment="Center" />
@@ -130,8 +133,59 @@
                 </Border>
             </Grid>
 
-            <TextBlock Grid.Row="4" Text="Nearest deadlines" Style="{StaticResource SectionTitleStyle}" Margin="2,0,0,8" />
-            <Border Grid.Row="5" Style="{StaticResource GlassCardStyle}" Padding="8">
+            <!-- docx section 1: "automated tool which sends notification to
+                 internal team members for approaching deadlines". Who owes what
+                 is computed automatically; delivery needs a click, because no
+                 mail transport is configured in this app. -->
+            <Border Grid.Row="4" Style="{StaticResource GlassSurfaceCompactStyle}" Margin="0,0,0,14">
+                <StackPanel Spacing="10">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <TextBlock Text="TEAM NOTIFICATIONS" Style="{StaticResource GlassEyebrowStyle}" />
+                            <TextBlock x:Name="NotifySummaryText" FontSize="13"
+                                       Foreground="{ThemeResource TextPrimaryBrush}" />
+                        </StackPanel>
+                        <Button Grid.Column="1" Content="Refresh" Style="{StaticResource MergedGlassMiniButtonStyle}"
+                                VerticalAlignment="Center" Click="NotifyTeam_Click" />
+                    </Grid>
+                    <ItemsControl x:Name="DigestList">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Grid Padding="0,6" ColumnSpacing="14">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="200" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel VerticalAlignment="Center">
+                                        <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="13"
+                                                   Foreground="{ThemeResource TextPrimaryBrush}" />
+                                        <TextBlock Text="{Binding EmailLabel}" FontSize="11"
+                                                   Foreground="{ThemeResource TextTertiaryBrush}" />
+                                    </StackPanel>
+                                    <TextBlock Grid.Column="1" Text="{Binding Summary}" VerticalAlignment="Center"
+                                               FontSize="12" TextWrapping="Wrap"
+                                               Foreground="{ThemeResource TextSecondaryBrush}" />
+                                    <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                        <Button Content="Copy" Style="{StaticResource MergedGlassMiniButtonStyle}"
+                                                Click="CopyDigest_Click" Tag="{Binding Key}" />
+                                        <Button Content="Email" Style="{StaticResource MergedGlassMiniButtonStyle}"
+                                                Click="EmailDigest_Click" Tag="{Binding Key}"
+                                                IsEnabled="{Binding CanEmail}" />
+                                    </StackPanel>
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </Border>
+
+            <TextBlock Grid.Row="5" Text="Nearest deadlines" Style="{StaticResource SectionTitleStyle}" Margin="2,0,0,8" />
+            <Border Grid.Row="6" Style="{StaticResource GlassSurfaceStyle}" Padding="8">
                 <ListView x:Name="DeadlineList" SelectionMode="None" IsItemClickEnabled="False"
                           Background="Transparent">
                     <ListView.ItemTemplate>

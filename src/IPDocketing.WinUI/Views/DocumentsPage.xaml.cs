@@ -1,4 +1,5 @@
 using System.IO;
+using IPDocketing.Core.Data;
 using IPDocketing.Core.Models;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -77,16 +78,39 @@ public sealed partial class DocumentsPage : Page
                 SelectedIndex = 0,
                 MinWidth = 380
             };
+            // docx section 5 names the categories the status tracker has to be
+            // able to group by - examination reports, hearing notices, orders,
+            // opposition proceedings, registration certificates, and anything
+            // else pulled off the TMR portal. The old five-item list couldn't
+            // express any of them, so every prosecution document landed under
+            // "General" and the status sheet had nothing to group.
             var typePicker = new ComboBox
             {
                 Header = "Document type",
-                ItemsSource = new[] { "General", "PTO Notice", "Correspondence", "Evidence", "Draft" },
+                ItemsSource = DocumentTypes.All,
                 SelectedIndex = 0,
                 MinWidth = 380
             };
+
+            // A document can belong to an opposition rather than a matter - the
+            // model already allowed it, but there was no way to do it from here,
+            // which is why opposition records had no evidence attached to them.
+            var oppositions = App.Oppositions.GetAll();
+            var oppositionChoices = new List<MatterChoice> { new(0, "Not linked to an opposition") };
+            oppositionChoices.AddRange(oppositions.Select(o => new MatterChoice(o.Id,
+                $"TM {o.TrademarkNumber} · {(o.Direction == OppositionDirection.FiledByUs ? "filed by us" : "against us")} · {o.Status}")));
+            var oppositionPicker = new ComboBox
+            {
+                Header = "Also link to an opposition (optional)",
+                ItemsSource = oppositionChoices,
+                SelectedIndex = 0,
+                MinWidth = 380
+            };
+
             var dialogContent = new StackPanel { Spacing = 12 };
             dialogContent.Children.Add(matterPicker);
             dialogContent.Children.Add(typePicker);
+            if (oppositions.Count > 0) dialogContent.Children.Add(oppositionPicker);
 
             var dialog = new ContentDialog
             {
@@ -101,7 +125,9 @@ public sealed partial class DocumentsPage : Page
                 || matterPicker.SelectedItem is not MatterChoice matter)
                 return;
 
-            var documentType = typePicker.SelectedItem?.ToString() ?? "General";
+            var documentType = typePicker.SelectedItem?.ToString() ?? DocumentTypes.General;
+            var oppositionChoiceId = (oppositionPicker.SelectedItem as MatterChoice)?.Id ?? 0;
+            int? oppositionId = oppositionChoiceId > 0 ? oppositionChoiceId : null;
             var latestVersions = App.Database.Documents
                 .AsEnumerable()
                 .Where(d => d.MatterId == matter.Id)
@@ -114,6 +140,7 @@ public sealed partial class DocumentsPage : Page
                 App.Database.Documents.Add(new Document
                 {
                     MatterId = matter.Id,
+                    OppositionId = oppositionId,
                     FileName = file.Name,
                     FilePath = file.Path,
                     DocumentType = documentType,

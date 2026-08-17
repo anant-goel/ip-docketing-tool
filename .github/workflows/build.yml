@@ -46,8 +46,47 @@ jobs:
         with:
           dotnet-version: '8.0.x'
 
+      # Caches the NuGet package folder between runs. Windows App SDK is a large
+      # download; without this every run pulls it fresh. Keyed on the project
+      # files so it invalidates the moment a package version changes.
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj') }}
+          restore-keys: nuget-${{ runner.os }}-
+
+      # Restore is the step most likely to fail on a first build, so it reports
+      # the resolved package versions before anything else runs. If it dies on
+      # Microsoft.WindowsAppSDK, see docs/BUILD-TROUBLESHOOTING.md and override:
+      #   -p:WindowsAppSdkVersion=1.7.250606001
       - name: Restore
         run: dotnet restore src/IPDocketing.WinUI/IPDocketing.WinUI.csproj
+
+      - name: Report resolved package versions
+        shell: pwsh
+        continue-on-error: true
+        run: |
+          $assets = "src/IPDocketing.WinUI/obj/project.assets.json"
+          if (Test-Path $assets) {
+            $json = Get-Content $assets -Raw | ConvertFrom-Json
+            $json.libraries.PSObject.Properties.Name |
+              Where-Object { $_ -match 'WindowsAppSDK|PdfPig|WebView2|EntityFrameworkCore/' } |
+              Sort-Object |
+              ForEach-Object { Write-Host "  $_" }
+          }
+
+      # Fails loudly and early if the restore silently resolved nothing, which
+      # is otherwise only discovered halfway through a confusing build error.
+      - name: Verify restore produced a lock of the expected packages
+        shell: pwsh
+        run: |
+          $assets = "src/IPDocketing.WinUI/obj/project.assets.json"
+          if (-not (Test-Path $assets)) {
+            Write-Error "Restore did not produce project.assets.json - the restore step did not actually resolve this project."
+            exit 1
+          }
+          Write-Host "Restore OK."
 
       - name: Build (quick verification)
         run: >
@@ -94,6 +133,44 @@ jobs:
 
           Remove-Item $pfxPath -Force
 
+      # Sanity check before packaging: a publish that "succeeded" but produced
+      # no executable is a real failure mode with self-contained WinUI, and it
+      # is far cheaper to catch here than after downloading the artifact.
+      - name: Verify the executable was produced
+        shell: pwsh
+        run: |
+          $exe = "publish/IPDocketing.exe"
+          if (-not (Test-Path $exe)) {
+            Write-Error "Publish completed but $exe is missing."
+            Get-ChildItem publish | Select-Object -First 40 | Format-Table Name, Length
+            exit 1
+          }
+          $size = [math]::Round((Get-Item $exe).Length / 1KB, 1)
+          $files = (Get-ChildItem publish -Recurse -File).Count
+          $totalMb = [math]::Round(((Get-ChildItem publish -Recurse -File | Measure-Object Length -Sum).Sum / 1MB), 1)
+          Write-Host "IPDocketing.exe present ($size KB)."
+          Write-Host "Publish folder: $files file(s), $totalMb MB."
+
+          # The TrimPublishOutput target should have removed the Windows AI
+          # stack and the non-English .mui resources. If they are still here the
+          # target did not run, which is worth knowing before shipping a folder
+          # that is ~50 MB heavier than it needs to be.
+          $leftovers = Get-ChildItem publish -File | Where-Object {
+            $_.Name -like 'onnxruntime*' -or $_.Name -eq 'DirectML.dll' -or $_.Name -like 'Microsoft.Windows.AI*'
+          }
+          if ($leftovers) {
+            Write-Warning "TrimPublishOutput did not run - $($leftovers.Count) unused AI runtime file(s) still present."
+          } else {
+            Write-Host "Trim confirmed: no unused AI runtime files in the publish output."
+          }
+
+          $extraLocales = Get-ChildItem publish -Directory | Where-Object {
+            $_.Name -match '^[a-z]{2}(-[A-Za-z]+)+$' -and $_.Name -notlike 'en-*'
+          }
+          if ($extraLocales) {
+            Write-Warning "$($extraLocales.Count) non-English locale folder(s) still present."
+          }
+
       - name: Zip publish output into a single archive
         shell: pwsh
         run: |
@@ -105,6 +182,7 @@ jobs:
           name: IPDocketing-win-x64
           path: IPDocketing-win-x64.zip
           if-no-files-found: error
+          retention-days: 30
 
       - name: Create GitHub Release (optional)
         if: inputs.create_release == true

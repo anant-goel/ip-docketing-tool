@@ -25,9 +25,14 @@
                            Style="{StaticResource SubtitleStyle}" Margin="0,4,0,0" TextWrapping="Wrap" />
             </StackPanel>
             <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
-                <Button Content="Trademark search" Style="{StaticResource GlassButtonStyle}" Click="GoToTrademark_Click" />
-                <Button Content="e-Status" Style="{StaticResource GlassButtonStyle}" Click="GoToEStatus_Click" />
-                <Button Content="Patent search (InPASS)" Style="{StaticResource GlassButtonStyle}" Click="GoToPatent_Click" />
+                <Button Content="Trademark search" Style="{StaticResource MergedGlassButtonBaseStyle}" Click="GoToTrademark_Click" />
+                <Button Content="e-Status" Style="{StaticResource MergedGlassButtonBaseStyle}" Click="GoToEStatus_Click" />
+                <Button Content="Patent search (InPASS)" Style="{StaticResource MergedGlassButtonBaseStyle}" Click="GoToPatent_Click" />
+                <Button Content="My filings (CEFS)" Style="{StaticResource MergedGlassButtonBaseStyle}" Click="GoToCefs_Click"
+                        ToolTipService.ToolTip="Opens the e-Filing login. Sign in with your own agent credentials, go to your filings list, then use Import filings." />
+                <Button Content="Import filings from page" Style="{StaticResource MergedAccentButtonStyle}"
+                        Click="ImportFromPage_Click"
+                        ToolTipService.ToolTip="Reads the table shown on the current page and imports it into your docket" />
             </StackPanel>
         </Grid>
 
@@ -40,7 +45,7 @@
                 <TextBlock x:Name="StatusText" VerticalAlignment="Center"
                            Text="After you request the OTP and solve the CAPTCHA on the page below, click 'Auto-fill OTP from Gmail'."
                            Foreground="{ThemeResource TextSecondaryBrush}" TextWrapping="Wrap" />
-                <Button Grid.Column="1" Content="Auto-fill OTP from Gmail" Style="{StaticResource LiquidButtonStyle}"
+                <Button Grid.Column="1" Content="Auto-fill OTP from Gmail" Style="{StaticResource MergedAccentButtonStyle}"
                         Click="AutoFillOtp_Click" />
             </Grid>
         </Border>
@@ -48,24 +53,63 @@
         <!-- Prior-art fill: only automates typing YOUR search terms into the
              live page (same category as OTP auto-fill) - never touches the
              CAPTCHA. Click 'Trademark search' above first to load that page. -->
-        <Border Grid.Row="2" Style="{StaticResource GlassPanelStyle}" Padding="14,10" Margin="0,0,0,14">
-            <Grid ColumnSpacing="10">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="220" />
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="100" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-                <TextBlock Text="Prior art search:" VerticalAlignment="Center" FontWeight="SemiBold"
-                           Foreground="{ThemeResource TextPrimaryBrush}" />
-                <TextBox x:Name="PriorArtNameBox" Grid.Column="1" PlaceholderText="Mark name" />
-                <TextBlock Grid.Column="2" Text="Class" VerticalAlignment="Center" Margin="10,0,0,0"
-                           Foreground="{ThemeResource TextSecondaryBrush}" />
-                <TextBox x:Name="PriorArtClassBox" Grid.Column="3" PlaceholderText="e.g. 25" />
-                <Button Grid.Column="4" Content="Fill search form" Style="{StaticResource GlassButtonStyle}"
-                        Click="FillPriorArtSearch_Click" Margin="10,0,0,0" />
-            </Grid>
+        <Border Grid.Row="2" Style="{StaticResource GlassSurfaceCompactStyle}" Margin="0,0,0,14">
+            <StackPanel Spacing="10">
+                <Grid ColumnSpacing="10">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="90" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="Prior art search:" VerticalAlignment="Center" FontWeight="SemiBold"
+                               Foreground="{ThemeResource TextPrimaryBrush}" />
+                    <TextBox x:Name="PriorArtNameBox" Grid.Column="1" PlaceholderText="Mark name"
+                             KeyDown="PriorArtBox_KeyDown" />
+                    <TextBlock Grid.Column="2" Text="Class" VerticalAlignment="Center" Margin="6,0,0,0"
+                               Foreground="{ThemeResource TextSecondaryBrush}" />
+                    <TextBox x:Name="PriorArtClassBox" Grid.Column="3" PlaceholderText="e.g. 29"
+                             KeyDown="PriorArtBox_KeyDown" />
+                    <Button Grid.Column="4" Content="Fill search form" Style="{StaticResource MergedAccentButtonStyle}"
+                            Click="FillPriorArtSearch_Click" Margin="6,0,0,0" />
+                    <Button Grid.Column="5" Content="Diagnose" Style="{StaticResource MergedGlassButtonBaseStyle}"
+                            Click="DiagnoseForm_Click"
+                            ToolTipService.ToolTip="Lists every field the page actually exposes, and the label text each one sits under" />
+                </Grid>
+
+                <!-- The page has two independent radio groups (search type, and
+                     the wordmark match criteria). Filling only the text boxes
+                     leaves both unset, which is why a filled form still would
+                     not search. -->
+                <Grid ColumnSpacing="10">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="Search type" VerticalAlignment="Center" FontSize="12"
+                               Foreground="{ThemeResource TextSecondaryBrush}" />
+                    <ComboBox x:Name="SearchTypeBox" Grid.Column="1" MinWidth="150" SelectedIndex="0">
+                        <ComboBoxItem Content="Wordmark" Tag="wordmark" />
+                        <ComboBoxItem Content="Vienna Code" Tag="vienna" />
+                        <ComboBoxItem Content="Phonetic" Tag="phonetic" />
+                    </ComboBox>
+                    <TextBlock Grid.Column="2" Text="Match" VerticalAlignment="Center" FontSize="12"
+                               Margin="6,0,0,0" Foreground="{ThemeResource TextSecondaryBrush}" />
+                    <ComboBox x:Name="MatchCriteriaBox" Grid.Column="3" MinWidth="150" SelectedIndex="1">
+                        <ComboBoxItem Content="Start With" Tag="start with" />
+                        <ComboBoxItem Content="Contains" Tag="contains" />
+                        <ComboBoxItem Content="Match With" Tag="match with" />
+                    </ComboBox>
+                    <TextBlock x:Name="FillResultText" Grid.Column="4" VerticalAlignment="Center" FontSize="11"
+                               TextWrapping="Wrap" Foreground="{ThemeResource TextTertiaryBrush}"
+                               Text="Fills the mark, class and both radio groups. The CAPTCHA is left alone - you solve it and press Search." />
+                </Grid>
+            </StackPanel>
         </Border>
 
         <Grid Grid.Row="3" ColumnSpacing="14">
@@ -74,7 +118,7 @@
                 <ColumnDefinition Width="2*" />
             </Grid.ColumnDefinitions>
 
-            <Border Style="{StaticResource GlassCardStyle}" Padding="4">
+            <Border Style="{StaticResource GlassSurfaceStyle}" Padding="4">
                 <controls:WebView2 x:Name="Browser" />
             </Border>
 
@@ -97,16 +141,22 @@
                                    Foreground="{ThemeResource TextSecondaryBrush}" />
                         <TextBox x:Name="BulkNumbersBox" AcceptsReturn="True" Height="90"
                                  TextWrapping="Wrap" PlaceholderText="4567890&#10;4567891&#10;4567892" />
-                        <Button Content="Fetch all (uses current session)" Style="{StaticResource LiquidButtonStyle}"
+                        <Button Content="Fetch all (uses current session)" Style="{StaticResource MergedAccentButtonStyle}"
                                 HorizontalAlignment="Stretch" Click="BulkFetch_Click" />
                         <TextBlock x:Name="BulkStatusText" FontSize="12" TextWrapping="Wrap"
                                    Foreground="{ThemeResource TextTertiaryBrush}" />
-                        <Button Content="Copy report" Style="{StaticResource GlassButtonStyle}"
+                        <Button Content="Fetch documents for these numbers"
+                                Style="{StaticResource MergedGlassButtonBaseStyle}"
+                                HorizontalAlignment="Stretch" Click="FetchDocuments_Click"
+                                ToolTipService.ToolTip="Opens each number's status page in turn and files every document it lists against the matching matter" />
+                        <CheckBox x:Name="ApplyStatusCheck" Content="Also update matter status from the portal"
+                                  IsChecked="True" FontSize="12" />
+                        <Button Content="Copy report" Style="{StaticResource MergedGlassButtonBaseStyle}"
                                 HorizontalAlignment="Stretch" Click="CopyBulkReport_Click" />
                     </StackPanel>
                 </Border>
 
-                <Border Grid.Row="2" Style="{StaticResource GlassCardStyle}" Padding="6">
+                <Border Grid.Row="2" Style="{StaticResource GlassSurfaceStyle}" Padding="6">
                     <ListView x:Name="BulkResultsList" Background="Transparent" SelectionMode="None">
                         <ListView.ItemTemplate>
                             <DataTemplate>
@@ -121,7 +171,7 @@
                                         <TextBlock Text="{Binding StatusSummary}" FontSize="11" TextWrapping="Wrap"
                                                    Foreground="{ThemeResource TextSecondaryBrush}" />
                                     </StackPanel>
-                                    <Button Grid.Column="1" Content="Add to list" Style="{StaticResource GlassButtonStyle}"
+                                    <Button Grid.Column="1" Content="Add to list" Style="{StaticResource MergedGlassButtonBaseStyle}"
                                             Padding="8,4" FontSize="11" Click="AddFetchedToList_Click"
                                             Tag="{Binding}" IsEnabled="{Binding NotAdded}" />
                                 </Grid>

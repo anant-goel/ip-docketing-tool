@@ -24,7 +24,20 @@ namespace IPDocketing.Core.Services;
 public class JournalFetchService
 {
     private const string ListingUrl = "https://search.ipindia.gov.in/IPOJournal/Journal/Trademark";
-    private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(20) };
+    // A default HttpClient sends no User-Agent at all, which some government
+    // front-ends reject outright or serve a different page to. Identifying the
+    // app honestly is both more reliable and the correct thing to do - this is
+    // a public, login-free page being read as a normal client, not an attempt
+    // to look like something it isn't.
+    private static readonly HttpClient Http = CreateClient();
+
+    private static HttpClient CreateClient()
+    {
+        var client = new HttpClient { Timeout = TimeSpan.FromSeconds(25) };
+        client.DefaultRequestHeaders.UserAgent.ParseAdd("IPDocketing/1.0 (+desktop docketing tool)");
+        client.DefaultRequestHeaders.Accept.ParseAdd("text/html,application/xhtml+xml");
+        return client;
+    }
 
     public record JournalIssueEntry(
         string JournalNumber,
@@ -106,6 +119,58 @@ public class JournalFetchService
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// The most recent issues, newest first - what the docx section 4 page wants
+    /// ("links of the Trade Marks Journal published weekly every Monday"),
+    /// rather than having to know a class number first.
+    /// </summary>
+    public async Task<List<JournalIssueEntry>> GetLatestIssuesAsync(int count = 8, CancellationToken ct = default)
+    {
+        var issues = await FetchIssuesAsync(ct);
+        return issues
+            .OrderByDescending(i => i.PublicationDate ?? DateTime.MinValue)
+            .Take(Math.Max(1, count))
+            .ToList();
+    }
+
+    /// <summary>
+    /// Downloads a Journal PDF into the local library. Streams to a temporary
+    /// file and renames on success, so an interrupted download can never leave
+    /// a half-written file that later looks like a complete one.
+    /// </summary>
+    public async Task<string> DownloadPdfAsync(string url, string libraryPath, string issueNumber,
+                                               CancellationToken ct = default)
+    {
+        Directory.CreateDirectory(libraryPath);
+
+        var safeIssue = string.Concat(issueNumber.Select(c =>
+            Path.GetInvalidFileNameChars().Contains(c) ? '_' : c));
+        var finalPath = Path.Combine(libraryPath, $"journal_{safeIssue}.pdf");
+        var tempPath = finalPath + ".part";
+
+        if (File.Exists(finalPath)) return finalPath;
+
+        using var response = await Http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct);
+        response.EnsureSuccessStatusCode();
+
+        // Content-type is checked because IP India serves an HTML maintenance
+        // page with a 200 status when the file store is down - saving that as a
+        // .pdf produces a file that fails much later and far less obviously.
+        var contentType = response.Content.Headers.ContentType?.MediaType ?? "";
+        if (contentType.Contains("html", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException(
+                "The server returned an HTML page rather than a PDF - the Journal file store may be down.");
+
+        await using (var source = await response.Content.ReadAsStreamAsync(ct))
+        await using (var target = File.Create(tempPath))
+        {
+            await source.CopyToAsync(target, ct);
+        }
+
+        File.Move(tempPath, finalPath, overwrite: true);
+        return finalPath;
     }
 
     private static DateTime? ParseDate(string text)

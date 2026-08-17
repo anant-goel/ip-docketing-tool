@@ -18,7 +18,14 @@ namespace IPDocketing.Core.Services;
 /// </summary>
 public class IndiaPincodeService
 {
-    private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(8) };
+    private static readonly HttpClient Http = CreateClient();
+
+    private static HttpClient CreateClient()
+    {
+        var client = new HttpClient { Timeout = TimeSpan.FromSeconds(8) };
+        client.DefaultRequestHeaders.UserAgent.ParseAdd("IPDocketing/1.0 (+desktop docketing tool)");
+        return client;
+    }
 
     public record PincodeResult(string District, string State, string Region);
 

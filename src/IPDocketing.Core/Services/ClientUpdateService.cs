@@ -64,6 +64,58 @@ public class ClientUpdateService
         _db.SaveChanges();
     }
 
+    /// <summary>
+    /// docx section 8 - "an automated tool which will send automatic updates to
+    /// the clients". The generation half is genuinely automatic: this runs every
+    /// client whose last update is older than the interval and drafts a fresh
+    /// one, with no one clicking anything. It is called on startup and can be
+    /// called from the page.
+    ///
+    /// The sending half is not automatic and cannot be made so from here - there
+    /// is no mail transport configured in this app. Use BuildMailtoUri to open
+    /// the draft in the default mail client, or copy the text. Turning this into
+    /// true unattended sending needs an SMTP host and credential (or a Microsoft
+    /// Graph app registration) that only you can provision.
+    /// </summary>
+    public List<ClientUpdateLog> GenerateDueUpdates(TimeSpan interval)
+    {
+        var cutoff = DateTime.UtcNow - interval;
+        var generated = new List<ClientUpdateLog>();
+
+        foreach (var clientName in GetClientNames())
+        {
+            var last = _db.ClientUpdateLogs
+                .Where(l => l.ClientName == clientName)
+                .OrderByDescending(l => l.GeneratedDate)
+                .FirstOrDefault();
+
+            if (last is not null && last.GeneratedDate > cutoff) continue;
+            generated.Add(GenerateUpdate(clientName));
+        }
+
+        return generated;
+    }
+
+    /// <summary>Generates a fresh update for every client, regardless of when the last one ran.</summary>
+    public List<ClientUpdateLog> GenerateForAllClients() =>
+        GetClientNames().Select(GenerateUpdate).ToList();
+
+    /// <summary>
+    /// Pre-filled mail draft for a generated update. The recipient is left blank
+    /// because client contact addresses are not stored anywhere in this schema -
+    /// deliberately, since that is client PII this app has no reason to hold.
+    /// </summary>
+    public string BuildMailtoUri(ClientUpdateLog log, string? recipientEmail = null)
+    {
+        var subject = $"Portfolio update - {log.ClientName} - {log.GeneratedDate:dd MMM yyyy}";
+        var body = log.SummaryText;
+        if (body.Length > 1800) body = body[..1800] + Environment.NewLine + "... (truncated - full text is in the app)";
+
+        return $"mailto:{Uri.EscapeDataString(recipientEmail ?? string.Empty)}" +
+               $"?subject={Uri.EscapeDataString(subject)}" +
+               $"&body={Uri.EscapeDataString(body)}";
+    }
+
     private static string BuildSummary(string clientName, List<Matter> matters)
     {
         var lines = new List<string>

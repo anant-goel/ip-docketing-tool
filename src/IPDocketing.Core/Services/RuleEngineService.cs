@@ -57,7 +57,10 @@ public class RuleEngineService
             ? triggeringEvent.EventDate.Date.AddMonths(rule.PeriodLength)
             : triggeringEvent.EventDate.Date.AddDays(rule.PeriodLength);
 
-        var effective = _calendar.RollForward(nominal);
+        // Phase 30: roll on the matter's own jurisdiction calendar, not a
+        // single global one. Previously every deadline - Indian ones included -
+        // was rolled against a US federal holiday table.
+        var effective = _calendar.RollForward(nominal, matter.Country);
 
         var deadline = new Deadline
         {
@@ -78,7 +81,8 @@ public class RuleEngineService
         var auditEntry = _audit.Log("Create", "Deadline", deadline.Id,
             $"Rule {rule.RuleVersion} ({rule.Citation ?? rule.CountryCode + "/" + rule.MatterType}) " +
             $"triggered by {triggeringEvent.Type} on {triggeringEvent.EventDate:yyyy-MM-dd}. " +
-            $"Nominal={nominal:yyyy-MM-dd}, Effective={effective:yyyy-MM-dd}, Calendar={_calendar.CalendarVersion}.");
+            $"Nominal={nominal:yyyy-MM-dd}, Effective={effective:yyyy-MM-dd}, "+
+            $"Calendar={_calendar.CalendarVersion}/{matter.Country}.");
 
         deadline.AuditHash = auditEntry.RecordHash;
         _db.SaveChanges();

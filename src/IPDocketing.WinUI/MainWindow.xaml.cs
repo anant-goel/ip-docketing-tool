@@ -211,6 +211,10 @@ public sealed partial class MainWindow : Window
             "Matters" => typeof(MattersPage),
             "Deadlines" => typeof(DeadlinesPage),
             "Oppositions" => typeof(OppositionsPage),
+            "Automation" => typeof(AutomationPage),
+            "Renewals" => typeof(RenewalsPage),
+            "StatusTracker" => typeof(StatusTrackerPage),
+            "TrademarkSearch" => typeof(TrademarkSearchPage),
             "Journal" => typeof(JournalPage),
             "ClientUpdates" => typeof(ClientUpdatesPage),
             "ActivityLog" => typeof(ActivityLogPage),
@@ -350,9 +354,41 @@ public sealed partial class MainWindow : Window
             return;
         }
 
+        if (query.Contains("status", StringComparison.OrdinalIgnoreCase)
+            || query.Contains("history", StringComparison.OrdinalIgnoreCase))
+        {
+            SelectNavigationItem("StatusTracker");
+            return;
+        }
+
+        if (query.Contains("opposition", StringComparison.OrdinalIgnoreCase)
+            || query.Contains("oppose", StringComparison.OrdinalIgnoreCase))
+        {
+            SelectNavigationItem("Oppositions");
+            return;
+        }
+
+        if (query.Contains("renew", StringComparison.OrdinalIgnoreCase)
+            || query.Contains("expir", StringComparison.OrdinalIgnoreCase)
+            || query.Contains("restor", StringComparison.OrdinalIgnoreCase))
+        {
+            SelectNavigationItem("Renewals");
+            return;
+        }
+
+        if (query.Contains("journal", StringComparison.OrdinalIgnoreCase)
+            || query.Contains("watch", StringComparison.OrdinalIgnoreCase))
+        {
+            SelectNavigationItem("Journal");
+            return;
+        }
+
         var deadlineSearch = query.Contains("deadline", StringComparison.OrdinalIgnoreCase)
                              || query.Contains("due", StringComparison.OrdinalIgnoreCase)
                              || query.Contains("response", StringComparison.OrdinalIgnoreCase);
-        SelectNavigationItem(deadlineSearch ? "Deadlines" : "Matters");
+
+        // Anything else is treated as a mark name and handed to the dedicated
+        // trademark search, which is what "search matters" nearly always means.
+        SelectNavigationItem(deadlineSearch ? "Deadlines" : "TrademarkSearch");
     }
 }

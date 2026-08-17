@@ -9,3 +9,8 @@ publish/
 ## OS
 .DS_Store
 Thumbs.db
+
+# WebView2 runtime user-data folder. Created next to the executable by older
+# builds; now redirected to %LocalAppData%\IPDocketing\WebView2, but a stale one
+# may still exist beside a previously-run copy of the app.
+*.exe.WebView2/

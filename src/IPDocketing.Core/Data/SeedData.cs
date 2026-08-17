@@ -117,6 +117,27 @@ public static class SeedData
                 ExtensionAvailable = true, MaxExtensionDays = 180,
                 Citation = "Patents Act 1970, Section 53 / Patents Rules, Rule 80", EffectiveFrom = new DateTime(2003, 5, 20), RuleVersion = "IN_PATACT_S53_v1",
                 ExtensionFeeNote = "Late payment permitted up to 6 months with surcharge (Rule 80(1A)); renewal fee runs from the filing date, not the grant date - review before relying on this trigger if grant happened well after filing" },
+
+            // --- India: opposition timeline (docx section 3 needs these to
+            //     produce real deadlines instead of hand-typed dates) ---
+            new() {
+                CountryCode = "IN", CountryName = "India", MatterType = MatterType.Trademark,
+                TriggerEvent = EventType.Publication, DeadlineDescription = "Opposition period closes (4 months from journal publication)",
+                PeriodUnit = PeriodUnit.Months, PeriodLength = 4,
+                ExtensionAvailable = false, MaxExtensionDays = 0,
+                Citation = "Trade Marks Act 1999, Section 21(1) / Trade Marks Rules 2017, Rule 42",
+                CitationUrl = "https://ipindia.gov.in/writereaddata/Portal/IPOAct/1_31_1_trade-marks-act.pdf",
+                EffectiveFrom = new DateTime(2017, 3, 6), RuleVersion = "IN_TMACT1999_S21_v2017",
+                ExtensionFeeNote = "The 2017 Rules removed the earlier extension of the opposition period - the four months runs from advertisement in the Journal and does not extend" },
+
+            new() {
+                CountryCode = "IN", CountryName = "India", MatterType = MatterType.Trademark,
+                TriggerEvent = EventType.Opposition, DeadlineDescription = "Counter-statement due (2 months from notice of opposition)",
+                PeriodUnit = PeriodUnit.Months, PeriodLength = 2,
+                ExtensionAvailable = false, MaxExtensionDays = 0,
+                Citation = "Trade Marks Act 1999, Section 21(2) / Rule 44",
+                EffectiveFrom = new DateTime(2017, 3, 6), RuleVersion = "IN_TMACT1999_S21_2_v2017",
+                ExtensionFeeNote = "Not extendable - failure to file within two months means the application is deemed abandoned under Section 21(2)" },
         };
 
         db.CountryRules.AddRange(rules);
@@ -178,7 +199,7 @@ public static class SeedData
 
         var oaNominal = oaEvent.EventDate.Date.AddMonths(3);
         var calendar = new Services.HolidayCalendarService();
-        var oaEffective = calendar.RollForward(oaNominal);
+        var oaEffective = calendar.RollForward(oaNominal, parent.Country);
 
         db.Deadlines.Add(new Deadline
         {
@@ -200,7 +221,7 @@ public static class SeedData
             MatterId = tm.Id,
             Description = "File Statement of Use",
             NominalDueDate = tmNominal,
-            DueDate = calendar.RollForward(tmNominal),
+            DueDate = calendar.RollForward(tmNominal, tm.Country),
             Kind = DeadlineKind.Hard,
             Status = DeadlineStatus.Open,
             ResponsibleUser = "M. Chen"
@@ -212,7 +233,7 @@ public static class SeedData
             MatterId = child.Id,
             Description = "EP validation / national phase review",
             NominalDueDate = epNominal,
-            DueDate = calendar.RollForward(epNominal),
+            DueDate = calendar.RollForward(epNominal, child.Country),
             Kind = DeadlineKind.Hard,
             Status = DeadlineStatus.Open,
             ResponsibleUser = "J. Patel"
