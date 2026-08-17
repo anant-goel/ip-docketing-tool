@@ -60,25 +60,17 @@ public sealed partial class IpIndiaPortalPage : Page
     {
         try
         {
-            // Park WebView2's user-data folder under %LocalAppData% rather than
-            // letting it default to "IPDocketing.exe.WebView2" beside the
-            // executable. That default folder is created on first use and grows
-            // to tens of megabytes of cache, cookies and crash dumps - which is
-            // how it ends up inside a zip of the app folder, and why it needs to
-            // live with the rest of the app's state instead. Session cookies
-            // also survive an app update this way, so a portal login isn't lost
-            // every time the folder is replaced.
-            var userDataFolder = System.IO.Path.Combine(App.AppDataDirectory, "WebView2");
-            System.IO.Directory.CreateDirectory(userDataFolder);
-
-            // Positional, not named: this WebView2 build's CreateAsync overload
-            // does not use the parameter name 'browserExecutableFolder', so a
-            // named argument fails to bind (CS1739). Positional args are stable
-            // across the versions that matter here.
-            var environment = await CoreWebView2Environment.CreateAsync(
-                null, userDataFolder, null);
-
-            await Browser.EnsureCoreWebView2Async(environment);
+            // The user-data folder is redirected in App.ConfigureWebView2Storage
+            // via the WEBVIEW2_USER_DATA_FOLDER environment variable, which is
+            // read by the WebView2 loader itself.
+            //
+            // Two attempts at doing this through CoreWebView2Environment.CreateAsync
+            // failed to compile against this WebView2 build - first CS1739 on a
+            // named argument, then CS1501 on the three-argument form. Rather
+            // than guess a third overload shape, this uses the documented
+            // environment variable, which has no overload to get wrong and is
+            // stable across every WebView2 version.
+            await Browser.EnsureCoreWebView2Async();
             Browser.CoreWebView2.Navigate(TrademarkSearchUrl);
         }
         catch (Exception ex)

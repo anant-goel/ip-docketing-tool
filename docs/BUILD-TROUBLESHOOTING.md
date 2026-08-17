@@ -12,7 +12,7 @@ my earlier warnings turned out to be wrong:
 | `KeySpline` as a dictionary resource | Never reached — markup compile aborted first. Removed anyway; nothing used it. |
 | Contravariant `(object, object)` handlers | Never reached. Tightened anyway. |
 | — | **`CompositionTarget` is `Microsoft.UI.Xaml.Media` in WinUI 3, not `Microsoft.UI.Xaml`.** Missed this one entirely. |
-| — | **`CoreWebView2Environment.CreateAsync` has no `browserExecutableFolder` named parameter** in this WebView2 build. Now positional. |
+| — | **`CoreWebView2Environment.CreateAsync`** — two failed attempts (CS1739 on a named argument, then CS1501 on the three-argument form). Abandoned the API entirely; the user-data folder is now set through the `WEBVIEW2_USER_DATA_FOLDER` environment variable, which has no overload to get wrong. |
 
 ### About `WMC9999: Object reference not set` and `WMC1509`
 

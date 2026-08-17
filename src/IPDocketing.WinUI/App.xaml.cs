@@ -29,6 +29,40 @@ public partial class App : Application
     public static AutoSyncService AutoSync { get; private set; } = null!;
     public static DocumentIngestService DocumentIngest { get; private set; } = null!;
 
+    /// <summary>
+    /// Points WebView2's user-data folder at %LocalAppData%\IPDocketing\WebView2
+    /// instead of letting it default to "IPDocketing.exe.WebView2" beside the
+    /// executable.
+    ///
+    /// That default folder is created on first use and grows to tens of
+    /// megabytes of cache, cookies and crash dumps - it is what bloated the
+    /// zipped app folder by 44 MB - and it is wiped whenever the app folder is
+    /// replaced on update, taking any portal session with it.
+    ///
+    /// Done through the environment variable rather than
+    /// CoreWebView2Environment.CreateAsync because two different overload
+    /// shapes of that method failed to compile against this WebView2 build.
+    /// The variable is read by the WebView2 loader at initialisation, has no
+    /// API surface to get wrong, and works across all versions. It must be set
+    /// before any WebView2 instance is created, which is why it happens here at
+    /// startup rather than on the portal page.
+    /// </summary>
+    private static void ConfigureWebView2Storage()
+    {
+        try
+        {
+            var folder = Path.Combine(AppDataDirectory, "WebView2");
+            Directory.CreateDirectory(folder);
+            Environment.SetEnvironmentVariable("WEBVIEW2_USER_DATA_FOLDER", folder);
+        }
+        catch
+        {
+            // Falling back to the default location is ugly but harmless - the
+            // embedded browser still works, it just stores its cache beside the
+            // executable.
+        }
+    }
+
     /// <summary>Whether the unattended Journal pipeline is running. Persisted between sessions.</summary>
     public static bool AutoSyncEnabled { get; private set; }
 
@@ -139,6 +173,10 @@ public partial class App : Application
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "IPDocketing");
         Directory.CreateDirectory(AppDataDirectory);
+
+        // Must run before any WebView2 instance exists.
+        ConfigureWebView2Storage();
+
         DatabasePath = Path.Combine(AppDataDirectory, "ipdocketing.db");
 
         var sealedDb = Path.Combine(AppDataDirectory, "ipdocketing.db.enc");
