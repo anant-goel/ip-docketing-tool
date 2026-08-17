@@ -118,7 +118,7 @@ public sealed partial class AutomationPage : Page
             : "Automatic checking off. Use Run now when you want a pass.";
     }
 
-    private void Interval_Changed(object sender, object e)
+    private void Interval_Changed(object sender, SelectionChangedEventArgs e)
     {
         if (_initializing) return;
 

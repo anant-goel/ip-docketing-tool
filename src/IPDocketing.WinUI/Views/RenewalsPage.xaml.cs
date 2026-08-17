@@ -49,7 +49,7 @@ public sealed partial class RenewalsPage : Page
         AttorneyBox.SelectedIndex = 0;
     }
 
-    private void Filter_Changed(object sender, object e)
+    private void Filter_Changed(object sender, SelectionChangedEventArgs e)
     {
         if (_initializing) return;
         Load();

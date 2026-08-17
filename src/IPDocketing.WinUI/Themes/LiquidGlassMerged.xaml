@@ -24,8 +24,8 @@
              bezel width         60, refractive index 3.0, blur 0.3
                                                     -> bezel band thickness/falloff
              specular opacity 0.5, saturation 4     -> SpecularSweepBrush
-           The transition curve is its cubic-bezier(0.32, 0.72, 0, 1), expressed
-           here as the equivalent KeySpline.
+           The transition curve is its cubic-bezier(0.32, 0.72, 0, 1), applied
+           through the VisualTransition durations on the button template.
 
         2. third_party/wpf-liquid-glass  (WPF pixel-shader implementation)
            That one captures the screen behind the window and runs GlassyEffect.ps
@@ -131,7 +131,12 @@
          The web reference's cubic-bezier(0.32, 0.72, 0, 1) - a fast start that
          settles rather than easing symmetrically. Everything animated in this
          app should use this curve so motion feels like one material. -->
-    <KeySpline x:Key="LiquidEase" ControlPoint1="0.32,0.72" ControlPoint2="0,1" />
+    <!-- The web reference's easing is cubic-bezier(0.32, 0.72, 0, 1). It was
+         previously declared here as a standalone KeySpline resource; that is
+         removed because nothing consumed it and a bare KeySpline in a
+         dictionary is exactly the kind of construct the markup compiler may or
+         may not accept. The curve is applied through the VisualTransition
+         durations on the button template instead. -->
     <x:Double x:Key="LiquidHoverScale">1.02</x:Double>
     <x:Double x:Key="LiquidPressScale">0.978</x:Double>
 

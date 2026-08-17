@@ -1,6 +1,9 @@
 using Microsoft.UI;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
+// CompositionTarget is Microsoft.UI.Xaml.Media in WinUI 3, not Microsoft.UI.Xaml
+// as it was in WPF - hence CS0103 without this.
+using Microsoft.UI.Xaml.Media;
 using Windows.Graphics;
 using WinRT.Interop;
 

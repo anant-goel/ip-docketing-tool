@@ -71,9 +71,12 @@ public sealed partial class IpIndiaPortalPage : Page
             var userDataFolder = System.IO.Path.Combine(App.AppDataDirectory, "WebView2");
             System.IO.Directory.CreateDirectory(userDataFolder);
 
+            // Positional, not named: this WebView2 build's CreateAsync overload
+            // does not use the parameter name 'browserExecutableFolder', so a
+            // named argument fails to bind (CS1739). Positional args are stable
+            // across the versions that matter here.
             var environment = await CoreWebView2Environment.CreateAsync(
-                browserExecutableFolder: null,
-                userDataFolder: userDataFolder);
+                null, userDataFolder, null);
 
             await Browser.EnsureCoreWebView2Async(environment);
             Browser.CoreWebView2.Navigate(TrademarkSearchUrl);

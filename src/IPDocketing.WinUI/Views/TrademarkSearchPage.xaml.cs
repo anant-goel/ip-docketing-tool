@@ -59,7 +59,7 @@ public sealed partial class TrademarkSearchPage : Page
 
     private void Search_Click(object sender, RoutedEventArgs e) => RunSearch();
 
-    private void Filter_Changed(object sender, object e)
+    private void Filter_Changed(object sender, RoutedEventArgs e)
     {
         // Re-running on filter change is cheap and matches what the spec asks
         // for ("results should also be filtered based on...") - the filter acts
@@ -136,7 +136,7 @@ public sealed partial class TrademarkSearchPage : Page
     }
 
     private MatterService.MarkMatchMode SelectedMode() =>
-        (ModeBox.SelectedItem as ComboBoxItem)?.Tag as string switch
+        ((ModeBox.SelectedItem as ComboBoxItem)?.Tag as string) switch
         {
             "Exact" => MatterService.MarkMatchMode.Exact,
             "StartsWith" => MatterService.MarkMatchMode.StartsWith,
@@ -145,7 +145,7 @@ public sealed partial class TrademarkSearchPage : Page
         };
 
     private MarkType? SelectedMarkType() =>
-        (MarkTypeBox.SelectedItem as ComboBoxItem)?.Tag as string switch
+        ((MarkTypeBox.SelectedItem as ComboBoxItem)?.Tag as string) switch
         {
             "Word" => MarkType.Word,
             "Device" => MarkType.Device,

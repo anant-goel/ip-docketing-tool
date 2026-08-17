@@ -1,6 +1,32 @@
 # If the build fails
 
-Phases 30–35 have never been through a compiler. They were validated by parsing
+## First real build: 17 Aug 2026 — results
+
+Four errors, all now fixed. Recording what was actually true, because several of
+my earlier warnings turned out to be wrong:
+
+| Predicted | Reality |
+|---|---|
+| `Microsoft.WindowsAppSDK 2.4.0` may not resolve | **Resolved fine.** Pulled `microsoft.windowsappsdk.winui 2.3.6`. The version override exists but was not needed. |
+| `PdfPig 0.1.9` may not resolve | **Resolved fine.** No restore error. |
+| `KeySpline` as a dictionary resource | Never reached — markup compile aborted first. Removed anyway; nothing used it. |
+| Contravariant `(object, object)` handlers | Never reached. Tightened anyway. |
+| — | **`CompositionTarget` is `Microsoft.UI.Xaml.Media` in WinUI 3, not `Microsoft.UI.Xaml`.** Missed this one entirely. |
+| — | **`CoreWebView2Environment.CreateAsync` has no `browserExecutableFolder` named parameter** in this WebView2 build. Now positional. |
+
+### About `WMC9999: Object reference not set` and `WMC1509`
+
+These looked alarming and were not a real problem. `MarkupCompilePass2` needs the
+compiled assembly of the project it is processing; the three C# errors meant no
+assembly was produced, so pass 2 received no `LocalAssembly`, warned about it
+(WMC1509), and then dereferenced null (WMC9999).
+
+**A XAML internal error following C# errors in the same build is almost always a
+cascade.** Fix the C# errors first and re-run before investigating the XAML.
+
+---
+
+Phases 30–37 have been through a compiler once, at phase 37. They were validated by parsing
 every XAML file, cross-checking that every resource key and event handler
 resolves, confirming brace balance across all C#, and transcribing the
 similarity logic into Python to test its scoring — but none of that is a build.

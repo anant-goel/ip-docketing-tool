@@ -284,7 +284,7 @@ public sealed partial class StatusTrackerPage : Page
 
     private sealed record MatterChoice(int Id, string Label);
 
-    public sealed record Fact(string Label, string ValueText)
+    public sealed record Fact(string Label, string? ValueText)
     {
         public string Value => string.IsNullOrWhiteSpace(ValueText) ? "-" : ValueText;
     }
