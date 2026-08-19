@@ -28,6 +28,9 @@
                 <Button Content="Pull latest weekly issues" Style="{StaticResource MergedGlassButtonBaseStyle}"
                         Click="PullLatest_Click"
                         ToolTipService.ToolTip="Reads the public journal listing and logs the most recent issues with their PDF links" />
+                <Button Content="Find a name" Style="{StaticResource MergedGlassButtonBaseStyle}"
+                        Click="FindName_Click"
+                        ToolTipService.ToolTip="Search downloaded Journal PDFs for a proprietor or agent name and report the page it appears on" />
                 <Button Content="Watch report" Style="{StaticResource MergedGlassButtonBaseStyle}"
                         Click="WatchReport_Click"
                         ToolTipService.ToolTip="Builds the weekly watch report and opens it ready to print" />

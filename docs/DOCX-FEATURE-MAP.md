@@ -462,3 +462,64 @@ It does not solve the CAPTCHA and does not sign in for you. The Registry gates
 the status page deliberately; this works inside a session you opened, not around
 the gate. What it removes is clicking Download forty times and then filing forty
 PDFs by hand.
+
+---
+
+# Phase 40 — driven by real screenshots
+
+## Journal Watch: the "01 Jan 1601" bug
+
+Your screenshot said *"No journal issue found on/before 01 Jan 1601"*. That is
+`DateTimeOffset.MinValue` — the FILETIME epoch — which is what a WinUI
+`DatePicker` returns when it has never been touched. The fetch was asking IP
+India for a journal published before the Registry existed, and correctly finding
+none. The picker is now seeded with today's date, with a guard for any other
+route to an unset value.
+
+The "Pending review" badges were correct, incidentally — those issues had been
+discovered but never downloaded, which is exactly what that state means.
+
+## Find a name in the Journal
+
+`JournalSearchService`, "Find a name" on the Journal Watch page.
+
+Searches downloaded Journal PDFs for a proprietor or agent name, reports
+**which issue and which page**, and saves the surrounding entry as a text file.
+
+This is a different question from the similarity watch. That compares published
+*marks* against your portfolio. This finds everything published under a named
+*party* — what you want for "did anything go through under KARTIK TRADE MARKS
+COMPANY this week?".
+
+Matching is on normalised text, and a page counts as a hit when the clear
+majority of distinctive words appear, not only on an exact phrase. Journal
+typesetting breaks names across lines and abbreviates them, so exact-phrase
+matching alone would miss most genuine appearances. "KARTIK TRADE MARKS COMPANY"
+still hits a page reading "M/S KARTIK TRADEMARKS CO.".
+
+**Issues that haven't been downloaded are reported separately, never counted as
+"no match".** "Not checked" and "not published" are completely different answers
+and must not be conflated.
+
+## e-Register navigation, scripted from your screenshots
+
+`PortalScripts.EStatusStep` walks the flow you showed me, one step per call:
+tab → National/IRDI radio → number → (you type the captcha) → View.
+
+Split into steps rather than one script because each transition is a postback:
+the next control does not exist in the DOM until the previous page returns. A
+single script would find nothing.
+
+`ReadStatusResult` reads "Status:" and "Sub Status:" from the loose text above
+the table — from your screenshot that's where the value that matters
+("Accepted & Advertised") lives, not in the table itself.
+
+`OpenResultPanel` + `ReadOpenPanelRows` handle both modals. They have different
+shapes:
+
+- Uploaded Documents: S.No | Document description | Document Date | View
+- Correspondence & Notices: S.No | Corres. No | Corres. Date | Subject | Despatch No | Despatch Date | View
+
+so the description column is found **by header name**, not by index. Filing an
+examination report under the wrong label because a column shifted is exactly the
+silent error that makes a docket untrustworthy.

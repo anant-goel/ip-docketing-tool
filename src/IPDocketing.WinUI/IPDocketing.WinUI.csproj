@@ -45,6 +45,15 @@
     <!-- Set false to publish everything, if you ever suspect the trim. -->
     <TrimPublishOutput Condition="'$(TrimPublishOutput)' == ''">true</TrimPublishOutput>
 
+    <!-- Whether to strip the Windows AI runtime (ONNX Runtime, DirectML, the
+         Phi Silica and imaging projections). Worth ~49 MB.
+
+         Set this to false on a Copilot+ machine - a Snapdragon X has an NPU
+         those components are the route to, and trimming them removes the
+         hardware acceleration path before it can be used:
+             dotnet publish ... -p:TrimWindowsAi=false -->
+    <TrimWindowsAi Condition="'$(TrimWindowsAi)' == ''">true</TrimWindowsAi>
+
     <!-- Package versions as overridable properties.
          None of this has been through a compiler yet, and the two most likely
          causes of a first-build failure are version resolution on these. Having
@@ -109,8 +118,9 @@
   -->
   <Target Name="TrimPublishOutput" AfterTargets="Publish" Condition="'$(TrimPublishOutput)' == 'true'">
 
-    <ItemGroup>
-      <!-- Windows AI platform: unreferenced by this app. -->
+    <ItemGroup Condition="'$(TrimWindowsAi)' == 'true'">
+      <!-- Windows AI platform. Trimmed by default; keep it with
+           -p:TrimWindowsAi=false on Copilot+ hardware. -->
       <_TrimFiles Include="$(PublishDir)Microsoft.Windows.AI*.dll" />
       <_TrimFiles Include="$(PublishDir)Microsoft.Windows.AI*.winmd" />
       <_TrimFiles Include="$(PublishDir)Microsoft.Windows.Vision*.*" />
@@ -119,7 +129,9 @@
       <_TrimFiles Include="$(PublishDir)onnxruntime.dll" />
       <_TrimFiles Include="$(PublishDir)onnxruntime*.dll" />
       <_TrimFiles Include="$(PublishDir)DirectML.dll" />
+    </ItemGroup>
 
+    <ItemGroup>
       <!-- Shell integrations this app does not use. -->
       <_TrimFiles Include="$(PublishDir)Microsoft.Windows.Widgets*.*" />
       <_TrimFiles Include="$(PublishDir)Microsoft.Windows.Search*.*" />

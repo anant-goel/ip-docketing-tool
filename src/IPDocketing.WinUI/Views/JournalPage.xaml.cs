@@ -8,6 +8,9 @@ public sealed partial class JournalPage : Page
     public JournalPage()
     {
         InitializeComponent();
+
+        // Seeded so the picker never sits at DateTimeOffset.MinValue (1601).
+        FetchDateBox.Date = DateTimeOffset.Now;
         try { LoadIssues(); LoadAlerts(); }
         catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"JournalPage load failed: {ex}"); }
     }
@@ -30,7 +33,19 @@ public sealed partial class JournalPage : Page
             return;
         }
 
+        // BUG FIX (from your screenshot: "No journal issue found on/before
+        // 01 Jan 1601"). A WinUI DatePicker that has never been touched returns
+        // DateTimeOffset.MinValue, which is 01-Jan-1601 - the FILETIME epoch.
+        // The fetch was therefore asking IP India for a journal published
+        // before the Registry existed, and correctly finding none. The picker
+        // is now seeded with today's date in the constructor, and this guard
+        // catches any other route to an unset value.
         var date = FetchDateBox.Date.DateTime;
+        if (date.Year < 1950)
+        {
+            date = DateTime.Today;
+            FetchDateBox.Date = DateTimeOffset.Now;
+        }
         FetchStatusText.Text = "Fetching from IP India...";
 
         try
@@ -124,6 +139,141 @@ public sealed partial class JournalPage : Page
     /// printable sheet and hands it to the browser, which owns the print dialog
     /// and the save-as-PDF path.
     /// </summary>
+    /// <summary>
+    /// Searches downloaded Journal PDFs for a proprietor or agent name and
+    /// reports the page each hit sits on.
+    ///
+    /// This is a different question from the similarity watch. That compares
+    /// published MARKS against your portfolio; this finds everything published
+    /// under a named PARTY, whether or not the mark resembles anything you own -
+    /// which is what you want when checking "did anything go through under
+    /// KARTIK TRADE MARKS COMPANY this week?".
+    /// </summary>
+    private async void FindName_Click(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
+    {
+        var input = new TextBox
+        {
+            Header = "Proprietor, applicant or agent name",
+            PlaceholderText = "e.g. KARTIK TRADE MARKS COMPANY",
+            MinWidth = 380
+        };
+        var scope = new ComboBox
+        {
+            Header = "How many recent issues to search",
+            ItemsSource = new[] { "Last 4 issues", "Last 12 issues", "Last 26 issues" },
+            SelectedIndex = 1,
+            MinWidth = 380
+        };
+
+        var panel = new StackPanel { Spacing = 12, Width = 400 };
+        panel.Children.Add(input);
+        panel.Children.Add(scope);
+        panel.Children.Add(new TextBlock
+        {
+            Text = "Only issues whose PDF has been downloaded can be searched. " +
+                   "Issues that haven't been downloaded are reported separately — " +
+                   "\"not checked\" is not the same as \"not published\".",
+            TextWrapping = Microsoft.UI.Xaml.TextWrapping.Wrap,
+            FontSize = 11,
+            Opacity = 0.6
+        });
+
+        var ask = new ContentDialog
+        {
+            XamlRoot = XamlRoot,
+            Title = "Find a name in the Journal",
+            Content = panel,
+            PrimaryButtonText = "Search",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Primary
+        };
+
+        if (await ask.ShowAsync() != ContentDialogResult.Primary) return;
+
+        var term = input.Text?.Trim() ?? "";
+        if (term.Length < 3)
+        {
+            FetchStatusText.Text = "Enter at least three characters to search for.";
+            return;
+        }
+
+        var maxIssues = scope.SelectedIndex switch { 0 => 4, 2 => 26, _ => 12 };
+        FetchStatusText.Text = $"Searching for \"{term}\"...";
+
+        try
+        {
+            var report = await App.JournalSearch.SearchAsync(
+                term, maxIssues,
+                progress: message => DispatcherQueue.TryEnqueue(() => FetchStatusText.Text = message));
+
+            var summary = new System.Text.StringBuilder();
+
+            if (report.Hits.Count == 0)
+            {
+                summary.AppendLine($"No mention of \"{term}\" found.");
+            }
+            else
+            {
+                summary.AppendLine($"Found in {report.Hits.Count} place(s):");
+                summary.AppendLine();
+
+                var savedDir = System.IO.Path.Combine(App.AppDataDirectory, "JournalExtracts");
+                foreach (var hit in report.Hits.Take(25))
+                {
+                    var savedPath = App.JournalSearch.SavePageExtract(hit, savedDir);
+                    summary.AppendLine($"• {hit.Location} — published {hit.PublicationDate:dd MMM yyyy}");
+                    summary.AppendLine($"  matched: {hit.MatchedText}");
+                    if (hit.FromOcr) summary.AppendLine("  (page text came from OCR — verify against the PDF)");
+                    summary.AppendLine($"  page text saved to: {savedPath}");
+                    summary.AppendLine();
+                }
+            }
+
+            summary.AppendLine($"Searched {report.IssuesSearched} issue(s) in full.");
+            if (report.IssuesSkipped > 0)
+                summary.AppendLine($"{report.IssuesSkipped} issue(s) were NOT searched — see below.");
+
+            foreach (var note in report.Notes.Take(12))
+                summary.AppendLine("  " + note);
+
+            var body = new TextBox
+            {
+                Text = summary.ToString(),
+                IsReadOnly = true,
+                AcceptsReturn = true,
+                TextWrapping = Microsoft.UI.Xaml.TextWrapping.Wrap,
+                FontSize = 12,
+                Height = 400,
+                Width = 560
+            };
+
+            var result = new ContentDialog
+            {
+                XamlRoot = XamlRoot,
+                Title = report.Hits.Count > 0 ? $"\"{term}\" — {report.Hits.Count} hit(s)" : $"\"{term}\" — not found",
+                Content = new ScrollViewer { Content = body, MaxHeight = 420 },
+                PrimaryButtonText = "Copy",
+                CloseButtonText = "Close",
+                DefaultButton = ContentDialogButton.Close
+            };
+
+            if (await result.ShowAsync() == ContentDialogResult.Primary)
+            {
+                var package = new Windows.ApplicationModel.DataTransfer.DataPackage();
+                package.SetText(summary.ToString());
+                Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(package);
+            }
+
+            FetchStatusText.Text = report.Hits.Count > 0
+                ? $"Found \"{term}\" in {report.Hits.Count} place(s). Page extracts saved."
+                : $"\"{term}\" not found in {report.IssuesSearched} searched issue(s).";
+        }
+        catch (Exception ex)
+        {
+            FetchStatusText.Text = $"Search failed: {ex.Message}";
+        }
+    }
+
     private async void WatchReport_Click(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
     {
         try
@@ -180,7 +330,7 @@ public sealed partial class JournalPage : Page
     private async void AddIssue_Click(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
     {
         var issueBox = new TextBox { Header = "Issue number", PlaceholderText = "e.g. 2156" };
-        var dateBox = new DatePicker { Header = "Publication date" };
+        var dateBox = new DatePicker { Header = "Publication date", Date = DateTimeOffset.Now };
         var urlBox = new TextBox { Header = "Journal URL", PlaceholderText = "https://ipindiaservices.gov.in/..." };
 
         var panel = new StackPanel { Spacing = 10 };

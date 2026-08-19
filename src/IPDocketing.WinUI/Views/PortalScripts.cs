@@ -473,6 +473,270 @@ internal static class PortalScripts
         """;
 
     /// <summary>
+    /// Drives the e-Register navigation you walked me through, one step per
+    /// call, so the caller can wait for each page between steps.
+    ///
+    /// Payload: { step, value }. Steps, in order:
+    ///   "tab"      - clicks "Trade Mark Application/Registered Mark"
+    ///   "national" - selects the "National/IRDI Number" radio
+    ///   "number"   - types the TM number into the number box (NOT the captcha)
+    ///   "view"     - clicks View, only valid once the captcha has been typed
+    ///
+    /// Split into steps rather than run as one script because each transition
+    /// is a postback: the next control does not exist in the DOM until the
+    /// previous page has come back. A single script would find nothing.
+    ///
+    /// The captcha is never filled and "view" is only ever called by the caller
+    /// after a human has typed the code.
+    /// </summary>
+    public const string EStatusStep = Helpers + """
+
+        (function () {
+            var payload = %%PAYLOAD%%;
+
+            function clickByText(patterns, tags) {
+                var found = null;
+                ipdDocuments().forEach(function (doc) {
+                    if (found) return;
+                    doc.querySelectorAll(tags).forEach(function (el) {
+                        if (found || !ipdVisible(el)) return;
+                        var text = ((el.innerText || '') + ' ' + (el.value || '')).trim().toLowerCase();
+                        if (ipdIsCaptcha(text)) return;
+                        for (var i = 0; i < patterns.length; i++) {
+                            if (text.indexOf(patterns[i]) !== -1) { found = el; return; }
+                        }
+                    });
+                });
+                if (!found) return false;
+                try { found.click(); } catch (e) { return false; }
+                return true;
+            }
+
+            if (payload.step === 'tab') {
+                var ok = clickByText(
+                    ['trade mark application/registered mark',
+                     'trade mark application',
+                     'registered mark'],
+                    'a, button, input[type="button"], input[type="submit"], li');
+                return JSON.stringify({ ok: ok, step: 'tab' });
+            }
+
+            if (payload.step === 'national') {
+                // The two options are National/IRDI Number and International
+                // Registration Number. Matching on "national" alone is safe;
+                // "international" contains "national" as a substring, so the
+                // negative check matters.
+                var picked = false;
+                ipdDocuments().forEach(function (doc) {
+                    if (picked) return;
+                    doc.querySelectorAll('input[type="radio"]').forEach(function (el) {
+                        if (picked || !ipdVisible(el)) return;
+                        var text = ipdLabelText(el);
+                        if (text.indexOf('international') !== -1) return;
+                        if (text.indexOf('national') === -1 && text.indexOf('irdi') === -1) return;
+                        try {
+                            el.checked = true;
+                            el.dispatchEvent(new Event('change', { bubbles: true }));
+                            el.click();
+                            picked = true;
+                        } catch (e) { }
+                    });
+                });
+                return JSON.stringify({ ok: picked, step: 'national' });
+            }
+
+            if (payload.step === 'number') {
+                var field = ipdBestField(
+                    'input[type="text"], input:not([type])',
+                    [['trade mark/application number', 25], ['application number', 20],
+                     ['trade mark number', 20], ['enter number', 15], ['number', 4]],
+                    ['captcha', 'answer', 'last number']);
+                if (!field) return JSON.stringify({ ok: false, step: 'number', reason: 'no-field' });
+                ipdSetValue(field, payload.value);
+                return JSON.stringify({ ok: true, step: 'number' });
+            }
+
+            if (payload.step === 'view') {
+                var ok = clickByText(['view'], 'input[type="submit"], input[type="button"], button, a');
+                return JSON.stringify({ ok: ok, step: 'view' });
+            }
+
+            return JSON.stringify({ ok: false, reason: 'unknown-step' });
+        })();
+        """;
+
+    /// <summary>
+    /// Opens one of the modal panels under a result - "Uploaded Documents" or
+    /// "Correspondence &amp; Notices" - and returns the rows inside it, each with
+    /// its View link.
+    ///
+    /// From your screenshots the two modals have different shapes:
+    ///   Uploaded Documents      : S.No | Document description | Document Date | View
+    ///   Correspondence &amp; Notices: S.No | Corres. No | Corres. Date | Subject |
+    ///                             Despatch No | Despatch Date | View
+    /// so the description column is located by header name rather than by index.
+    /// That is what lets the same script read both, and keeps working if a
+    /// column is added.
+    ///
+    /// Payload: { panel: "documents" | "correspondence" }.
+    /// </summary>
+    public const string OpenResultPanel = Helpers + """
+
+        (function () {
+            var payload = %%PAYLOAD%%;
+
+            var wanted = payload.panel === 'correspondence'
+                ? ['correspondence', 'notices']
+                : ['uploaded document', 'uploaded documents'];
+
+            var opened = false;
+            ipdDocuments().forEach(function (doc) {
+                if (opened) return;
+                doc.querySelectorAll('button, a, input[type="button"], input[type="submit"]').forEach(function (el) {
+                    if (opened || !ipdVisible(el)) return;
+                    var text = ((el.innerText || '') + ' ' + (el.value || '')).trim().toLowerCase();
+                    for (var i = 0; i < wanted.length; i++) {
+                        if (text.indexOf(wanted[i]) !== -1) {
+                            try { el.click(); opened = true; } catch (e) { }
+                            return;
+                        }
+                    }
+                });
+            });
+
+            return JSON.stringify({ opened: opened, panel: payload.panel });
+        })();
+        """;
+
+    /// <summary>
+    /// Reads the rows of an open modal panel, pairing each View link with the
+    /// description and date on its row.
+    ///
+    /// Column meaning is resolved from the header text, not from position:
+    /// "Document description" in one modal, "Subject" in the other. Filing an
+    /// examination report under the wrong label because a column index shifted
+    /// is exactly the kind of silent error that makes a docket untrustworthy.
+    /// </summary>
+    public const string ReadOpenPanelRows = Helpers + """
+
+        (function () {
+            var rows = [];
+
+            function cellText(cell) {
+                return (cell.innerText || cell.textContent || '').replace(/\s+/g, ' ').trim();
+            }
+
+            ipdDocuments().forEach(function (doc) {
+                doc.querySelectorAll('table').forEach(function (table) {
+                    if (!ipdVisible(table)) return;
+
+                    var trs = Array.prototype.slice.call(table.querySelectorAll('tr'));
+                    if (trs.length < 2) return;
+
+                    var headers = Array.prototype.map.call(
+                        trs[0].querySelectorAll('th, td'),
+                        function (c) { return cellText(c).toLowerCase(); });
+
+                    // Only tables that actually carry a View link are panels.
+                    if (!table.querySelector('a')) return;
+
+                    function indexOfHeader(names) {
+                        for (var h = 0; h < headers.length; h++) {
+                            for (var n = 0; n < names.length; n++) {
+                                if (headers[h].indexOf(names[n]) !== -1) return h;
+                            }
+                        }
+                        return -1;
+                    }
+
+                    var descIndex = indexOfHeader(['document description', 'subject', 'description']);
+                    var dateIndex = indexOfHeader(['document date', 'corres. date', 'corres date', 'despatch date', 'date']);
+                    if (descIndex < 0) return;
+
+                    for (var r = 1; r < trs.length; r++) {
+                        var cells = trs[r].querySelectorAll('td');
+                        if (cells.length === 0) continue;
+
+                        var link = trs[r].querySelector('a[href]');
+                        if (!link) continue;
+
+                        var href = link.href || '';
+                        var onclick = link.getAttribute('onclick') || '';
+
+                        rows.push({
+                            description: descIndex < cells.length ? cellText(cells[descIndex]) : '',
+                            date: (dateIndex >= 0 && dateIndex < cells.length) ? cellText(cells[dateIndex]) : '',
+                            url: href,
+                            onclick: onclick.slice(0, 300),
+                            linkText: cellText(link)
+                        });
+                    }
+                });
+            });
+
+            return JSON.stringify({ rows: rows.slice(0, 60) });
+        })();
+        """;
+
+    /// <summary>
+    /// Reads the "Matching Trade Marks" result block - the status line above the
+    /// table plus the single data row beneath it.
+    ///
+    /// The status is deliberately read from the labelled lines ("Status:",
+    /// "Sub Status:") rather than from the table, because from your screenshot
+    /// those sit ABOVE the table as loose text and carry the value that actually
+    /// matters ("Accepted &amp; Advertised").
+    /// </summary>
+    public const string ReadStatusResult = Helpers + """
+
+        (function () {
+            var out = { status: '', subStatus: '', asOn: '', fields: {} };
+
+            var body = '';
+            ipdDocuments().forEach(function (doc) {
+                body += ' ' + ((doc.body && doc.body.innerText) || '');
+            });
+            body = body.replace(/\s+/g, ' ');
+
+            function after(label) {
+                var i = body.toLowerCase().indexOf(label);
+                if (i === -1) return '';
+                var slice = body.substring(i + label.length, i + label.length + 90);
+                // Stop at the next labelled field.
+                return slice.split(/status\s*:|sub status\s*:|as on date\s*:|trade mark no/i)[0]
+                            .replace(/^[:\s]+/, '').trim();
+            }
+
+            out.asOn = after('as on date :');
+            out.subStatus = after('sub status:');
+            out.status = after('status:');
+
+            // The result table itself: one row of mark details.
+            ipdDocuments().forEach(function (doc) {
+                doc.querySelectorAll('table').forEach(function (table) {
+                    if (!ipdVisible(table)) return;
+                    var trs = table.querySelectorAll('tr');
+                    if (trs.length < 2) return;
+
+                    var headers = Array.prototype.map.call(
+                        trs[0].querySelectorAll('th, td'),
+                        function (c) { return (c.innerText || '').replace(/\s+/g, ' ').trim(); });
+
+                    if (headers.join(' ').toLowerCase().indexOf('trade mark') === -1) return;
+
+                    var cells = trs[1].querySelectorAll('td');
+                    for (var i = 0; i < headers.length && i < cells.length; i++) {
+                        var key = headers[i];
+                        if (key) out.fields[key] = (cells[i].innerText || '').replace(/\s+/g, ' ').trim();
+                    }
+                });
+            });
+
+            return JSON.stringify(out);
+        })();
+        """;
+
+    /// <summary>
     /// Reads every data table on the current page and returns headers plus rows.
     ///
     /// This is how a portfolio gets imported from your own CEFS / e-Filing

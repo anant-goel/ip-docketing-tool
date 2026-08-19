@@ -23,6 +23,22 @@ public interface IDocumentTextExtractor
     bool SupportsOcr { get; }
 
     Task<ExtractionResult> ExtractAsync(string pdfPath, CancellationToken ct = default);
+
+    /// <summary>
+    /// Same extraction, but page by page. Needed to answer "which page is it
+    /// on?" - a question the concatenated form structurally cannot, and the one
+    /// that matters when the answer has to be checked against a 500-page PDF.
+    /// </summary>
+    Task<PagedExtractionResult> ExtractPagesAsync(string pdfPath, CancellationToken ct = default);
+}
+
+public sealed record PagedExtractionResult(
+    List<string> Pages,
+    string Method,
+    string? Error = null)
+{
+    public bool IsExact => Method == ExtractionResult.TextLayer;
+    public int PageCount => Pages.Count;
 }
 
 public sealed record ExtractionResult(

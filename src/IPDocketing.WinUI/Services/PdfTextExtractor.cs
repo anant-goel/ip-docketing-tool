@@ -68,6 +68,54 @@ public sealed class PdfTextExtractor : IDocumentTextExtractor
     /// </summary>
     private const double OcrRenderScale = 4.0;
 
+    /// <summary>
+    /// Per-page text. Text layer only - OCR is deliberately not attempted here,
+    /// because a page-locating search over a dozen 500-page issues would mean
+    /// rendering thousands of pages at OCR resolution. Pages with no text layer
+    /// come back empty and the result reports the method, so a caller can tell
+    /// "not on this page" from "this page could not be read".
+    /// </summary>
+    public async Task<PagedExtractionResult> ExtractPagesAsync(string pdfPath, CancellationToken ct = default)
+    {
+        if (!File.Exists(pdfPath))
+            return new PagedExtractionResult(new List<string>(), ExtractionResult.Failed,
+                "The file no longer exists.");
+
+        try
+        {
+            var pages = new List<string>();
+            var empty = 0;
+
+            await Task.Run(() =>
+            {
+                using var document = UglyToad.PdfPig.PdfDocument.Open(pdfPath);
+                foreach (var page in document.GetPages())
+                {
+                    ct.ThrowIfCancellationRequested();
+                    var text = page.Text ?? string.Empty;
+                    if (text.Trim().Length < MinCharsForTextLayer) empty++;
+                    pages.Add(text);
+                }
+            }, ct);
+
+            var method = empty == 0 ? ExtractionResult.TextLayer
+                       : empty == pages.Count ? ExtractionResult.Failed
+                       : ExtractionResult.Mixed;
+
+            var note = empty > 0
+                ? $"{empty} of {pages.Count} page(s) have no text layer and were not searched. " +
+                  "Those pages are image-only; run the full extraction on this issue to OCR them."
+                : null;
+
+            return new PagedExtractionResult(pages, method, note);
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex)
+        {
+            return new PagedExtractionResult(new List<string>(), ExtractionResult.Failed, ex.Message);
+        }
+    }
+
     public async Task<ExtractionResult> ExtractAsync(string pdfPath, CancellationToken ct = default)
     {
         if (!File.Exists(pdfPath))

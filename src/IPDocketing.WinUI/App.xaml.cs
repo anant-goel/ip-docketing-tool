@@ -28,6 +28,7 @@ public partial class App : Application
     public static PortfolioImportService PortfolioImport { get; private set; } = null!;
     public static AutoSyncService AutoSync { get; private set; } = null!;
     public static DocumentIngestService DocumentIngest { get; private set; } = null!;
+    public static JournalSearchService JournalSearch { get; private set; } = null!;
 
     /// <summary>
     /// Points WebView2's user-data folder at %LocalAppData%\IPDocketing\WebView2
@@ -289,7 +290,11 @@ public partial class App : Application
             // The OCR half needs WinRT APIs that IPDocketing.Core, targeting
             // plain net8.0-windows, cannot see - so the reader is built here and
             // injected, keeping Core free of any UI-layer dependency.
-            AutoSync.UseExtractor(new Services.PdfTextExtractor());
+            var pdfExtractor = new Services.PdfTextExtractor();
+            AutoSync.UseExtractor(pdfExtractor);
+
+            JournalSearch = new JournalSearchService(Database);
+            JournalSearch.UseExtractor(pdfExtractor);
 
             // Renewal docketing is idempotent, so running it at every launch is
             // safe and means a mark can never sit in the register without its
