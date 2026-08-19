@@ -26,7 +26,23 @@ cascade.** Fix the C# errors first and re-run before investigating the XAML.
 
 ---
 
-Phases 30–37 have been through a compiler once, at phase 37. They were validated by parsing
+Phases 30–37 have been through a compiler once, at phase 37.
+
+## Build 2, 19 Aug 2026 — result
+
+One error: `JournalSearchService.cs` used `AppDbContext` without
+`using IPDocketing.Core.Data;`. Plain miss on my part - fixed. I then swept
+every other file in the WinUI and Core projects for the same pattern
+(a type used without its defining namespace imported) using a script that
+cross-references every `class`/`record`/`interface` declaration against every
+file's `using` list. It flagged 48 candidates; I checked each by hand.
+44 were the script not understanding that C# resolves unqualified names through
+enclosing file-scoped namespaces (`IPDocketing.WinUI.Views` is nested inside
+`IPDocketing.WinUI`, so `App` needs no `using`) and not understanding that
+`IPDocketing.App` - the legacy WPF project - isn't part of the WinUI build at
+all. The remaining 4 were same-named local members, a local constant, a string
+literal, and a tuple element name - not type references. `JournalSearchService`
+was the only genuine instance. They were validated by parsing
 every XAML file, cross-checking that every resource key and event handler
 resolves, confirming brace balance across all C#, and transcribing the
 similarity logic into Python to test its scoring — but none of that is a build.
