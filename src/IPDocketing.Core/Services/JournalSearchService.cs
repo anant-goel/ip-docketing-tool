@@ -26,6 +26,8 @@ public class JournalSearchService
 {
     private readonly AppDbContext _db;
     private IDocumentTextExtractor? _extractor;
+    private JournalFetchService? _fetch;
+    private string? _libraryPath;
 
     public JournalSearchService(AppDbContext db)
     {
@@ -33,6 +35,22 @@ public class JournalSearchService
     }
 
     public void UseExtractor(IDocumentTextExtractor extractor) => _extractor = extractor;
+
+    /// <summary>
+    /// Gives the search the ability to download a missing issue rather than
+    /// skip it.
+    ///
+    /// This is why "not found" kept coming back on a name that IS in the
+    /// Journal: the search only ever looked at issues whose PDF had already
+    /// been downloaded, and nothing had downloaded any. Every issue was skipped,
+    /// zero pages were searched, and the honest "0 hits" read exactly like
+    /// "not published". Searching now fetches what it needs first.
+    /// </summary>
+    public void UseDownloader(JournalFetchService fetch, string libraryPath)
+    {
+        _fetch = fetch;
+        _libraryPath = libraryPath;
+    }
 
     public sealed record PageHit(
         string IssueNumber,
@@ -93,9 +111,16 @@ public class JournalSearchService
 
             if (string.IsNullOrWhiteSpace(issue.LocalPdfPath) || !File.Exists(issue.LocalPdfPath))
             {
-                skipped++;
-                notes.Add($"Journal {issue.IssueNumber}: PDF not downloaded, so it was NOT searched.");
-                continue;
+                var fetched = await TryDownloadAsync(issue, progress, ct);
+                if (!fetched)
+                {
+                    skipped++;
+                    notes.Add(string.IsNullOrWhiteSpace(issue.Url)
+                        ? $"Journal {issue.IssueNumber}: no PDF link on record, so it could not be fetched or searched. " +
+                          "Use 'Pull latest weekly issues' to pick up the class-range links."
+                        : $"Journal {issue.IssueNumber}: download failed ({issue.LastError ?? "unknown"}), so it was NOT searched.");
+                    continue;
+                }
             }
 
             progress?.Invoke($"Searching Journal {issue.IssueNumber}...");
@@ -135,10 +160,57 @@ public class JournalSearchService
             }
         }
 
-        if (hits.Count == 0 && searched > 0)
-            notes.Add($"Searched {searched} issue(s) in full and found no mention of \"{term}\".");
+        if (hits.Count == 0)
+        {
+            if (searched == 0)
+                notes.Add($"NOTHING WAS SEARCHED - no issue PDF could be obtained. This is not the same as " +
+                          $"\"{term}\" being absent from the Journal.");
+            else
+                notes.Add($"Searched {searched} issue(s) in full and found no mention of \"{term}\"." +
+                          (skipped > 0 ? $" {skipped} further issue(s) could not be read - see above." : ""));
+        }
 
         return new SearchReport(hits, searched, skipped, notes);
+    }
+
+    /// <summary>
+    /// Downloads an issue's PDF on demand. Returns false when there is no link
+    /// on record or the fetch fails - never throws, because one bad issue must
+    /// not abort a search across a dozen of them.
+    /// </summary>
+    private async Task<bool> TryDownloadAsync(JournalIssue issue, Action<string>? progress, CancellationToken ct)
+    {
+        if (_fetch is null || _libraryPath is null) return false;
+        if (string.IsNullOrWhiteSpace(issue.Url)) return false;
+
+        try
+        {
+            progress?.Invoke($"Downloading Journal {issue.IssueNumber} (needed to search it)...");
+            var path = await _fetch.DownloadPdfAsync(issue.Url, _libraryPath, issue.IssueNumber, ct);
+
+            var info = new FileInfo(path);
+            if (info.Length < 20_000)
+            {
+                issue.LastError = $"Downloaded file was only {info.Length} bytes - likely an error page.";
+                try { File.Delete(path); } catch { }
+                _db.SaveChanges();
+                return false;
+            }
+
+            issue.LocalPdfPath = path;
+            issue.PdfSizeBytes = info.Length;
+            issue.DownloadedUtc = DateTime.UtcNow;
+            issue.LastError = null;
+            _db.SaveChanges();
+            return true;
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex)
+        {
+            issue.LastError = ex.Message;
+            try { _db.SaveChanges(); } catch { }
+            return false;
+        }
     }
 
     /// <summary>

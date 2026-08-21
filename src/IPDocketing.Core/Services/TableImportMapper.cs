@@ -170,9 +170,22 @@ public class TableImportMapper
         if (columns.Count == 0)
             throw new InvalidOperationException("No columns were mapped, so there is nothing to import.");
 
-        if (!columns.Any(c => c.Target == "Mark"))
+        // The Filed Applications page has NO mark column at all - it lists
+        // Form Type, Temp#, Application Number, Class, Filing Date, Appl. Type,
+        // Ref. No. and Status, and nothing else. Refusing to import without a
+        // mark made that entire page unimportable, which was wrong: an
+        // application number IS a usable identity for a docket record, and the
+        // mark name can be filled in later from the e-Status page.
+        //
+        // So a mark is only required when there is no application number to
+        // identify the row by.
+        if (!columns.Any(c => c.Target == "Mark") &&
+            !columns.Any(c => c.Target == "ApplicationNumber"))
+        {
             throw new InvalidOperationException(
-                "No column is mapped to Mark. The importer needs the mark itself to create a record.");
+                "No column is mapped to Mark or to ApplicationNumber. " +
+                "The importer needs at least one of them to identify a record.");
+        }
 
         var sb = new StringBuilder(string.Join(',', columns.Select(c => c.Target))).Append('\n');
         var written = 0;

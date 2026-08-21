@@ -16,7 +16,7 @@ public sealed partial class SettingsPage : Page
     public SettingsPage()
     {
         InitializeComponent();
-        try { RefreshGmailUi(); }
+        try { RefreshGmailUi(); RefreshOcrUi(); }
         catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"Gmail UI init failed: {ex}"); }
         try
         {
@@ -39,6 +39,81 @@ public sealed partial class SettingsPage : Page
             .Take(15)
             .ToList();
     }
+
+    private void RefreshOcrUi()
+    {
+        var available = App.TextExtractor?.TesseractAvailable == true;
+
+        OcrEngineText.Text = available ? "Tesseract active" : "Windows OCR (Tesseract not found)";
+        OcrEngineText.Foreground = available
+            ? (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["SuccessBrush"]
+            : (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["WarningBrush"];
+
+        OcrPathText.Text = available
+            ? $"Using: {App.TextExtractor!.Tesseract!.ExecutablePath}\n" +
+              $"Language data: {App.TextExtractor.Tesseract.TessDataPath ?? "default location"}"
+            : "Windows' built-in OCR is being used. It works with no setup, but is weaker on stylised type. " +
+              "Point this at tesseract.exe to upgrade.";
+    }
+
+    private async void ChooseTesseract_Click(object sender, RoutedEventArgs e)
+    {
+        var picker = new Windows.Storage.Pickers.FileOpenPicker();
+        picker.FileTypeFilter.Add(".exe");
+        WinRT.Interop.InitializeWithWindow.Initialize(picker,
+            WinRT.Interop.WindowNative.GetWindowHandle(App.MainWindow));
+
+        var file = await picker.PickSingleFileAsync();
+        if (file is null) return;
+
+        var extractor = Services.TesseractTextExtractor.TryCreate(file.Path);
+        if (extractor is null)
+        {
+            await Info("Not usable",
+                "That file couldn't be used as a Tesseract executable. Pick tesseract.exe from the " +
+                "Tesseract-OCR install folder.");
+            return;
+        }
+
+        if (extractor.TessDataPath is null)
+        {
+            await Info("Language data missing",
+                "tesseract.exe was found, but no tessdata folder alongside it and no TESSDATA_PREFIX set.\n\n" +
+                "Tesseract cannot recognise anything without at least eng.traineddata. Install the full " +
+                "package rather than the bare executable, or set TESSDATA_PREFIX to your tessdata folder.");
+            return;
+        }
+
+        try
+        {
+            System.IO.File.WriteAllText(App.TesseractPathFile, file.Path);
+            await Info("Saved",
+                $"Tesseract will be used after a restart.\n\n{file.Path}\n\n" +
+                "Existing documents aren't re-read automatically — anything already OCR'd keeps its " +
+                "previous text until it's processed again.");
+        }
+        catch (Exception ex)
+        {
+            await Info("Couldn't save", ex.Message);
+        }
+    }
+
+    private async void TesseractHelp_Click(object sender, RoutedEventArgs e) =>
+        await Info("Installing Tesseract",
+            "Tesseract is a separate open-source program (Apache 2.0). It isn't bundled because the " +
+            "binaries plus English language data are around 45 MB, which would undo the publish trimming.\n\n" +
+            "ON INTEL / AMD (x64):\n" +
+            "The UB Mannheim installer is the usual choice — search \"tesseract ocr windows installer\". " +
+            "Tick the language data during setup. Default path:\n" +
+            "C:\\Program Files\\Tesseract-OCR\\tesseract.exe\n\n" +
+            "ON SNAPDRAGON / ARM64:\n" +
+            "Most Windows builds are x64-only and will run under emulation, slowly. For native ARM64 " +
+            "binaries, the NAPS2.Tesseract.Binaries package publishes them — it's the only source I found " +
+            "that ships win-arm64.\n\n" +
+            "You also need eng.traineddata in a tessdata folder next to the executable. Without it " +
+            "Tesseract starts but recognises nothing.\n\n" +
+            "If Tesseract isn't installed, the app falls back to Windows' built-in OCR automatically — " +
+            "nothing breaks, results are just weaker on stylised type.");
 
     private static string GmailCredentialPath =>
         System.IO.Path.Combine(App.AppDataDirectory, "gmail_client_secret.json");

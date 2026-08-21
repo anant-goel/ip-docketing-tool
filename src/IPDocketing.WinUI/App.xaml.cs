@@ -30,6 +30,27 @@ public partial class App : Application
     public static DocumentIngestService DocumentIngest { get; private set; } = null!;
     public static JournalSearchService JournalSearch { get; private set; } = null!;
 
+    /// <summary>The shared OCR/text pipeline. Exposed so Settings can report which engine is live.</summary>
+    public static Services.ChainedTextExtractor TextExtractor { get; private set; } = null!;
+
+    /// <summary>Optional explicit path to tesseract.exe, set in Settings.</summary>
+    public static string TesseractPathFile => Path.Combine(AppDataDirectory, "tesseract-path.txt");
+
+    private static string? ReadTesseractPath(string appDataDirectory)
+    {
+        try
+        {
+            var path = Path.Combine(appDataDirectory, "tesseract-path.txt");
+            if (!File.Exists(path)) return null;
+            var value = File.ReadAllText(path).Trim();
+            return value.Length == 0 ? null : value;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
     /// <summary>
     /// Points WebView2's user-data folder at %LocalAppData%\IPDocketing\WebView2
     /// instead of letting it default to "IPDocketing.exe.WebView2" beside the
@@ -367,11 +388,24 @@ public partial class App : Application
             // The OCR half needs WinRT APIs that IPDocketing.Core, targeting
             // plain net8.0-windows, cannot see - so the reader is built here and
             // injected, keeping Core free of any UI-layer dependency.
-            var pdfExtractor = new Services.PdfTextExtractor();
+            // Every document now goes through the chain: text layer first
+            // (exact), then Tesseract if installed, then Windows OCR. Ordering
+            // matters - OCRing a page that already has a text layer replaces
+            // real characters with guesses.
+            var tesseractPath = ReadTesseractPath(AppDataDirectory);
+            TextExtractor = Services.ChainedTextExtractor.Create(tesseractPath);
+            var pdfExtractor = TextExtractor;
             AutoSync.UseExtractor(pdfExtractor);
+            DocumentIngest.UseExtractor(pdfExtractor);
 
             JournalSearch = new JournalSearchService(Database);
             JournalSearch.UseExtractor(pdfExtractor);
+
+            // Without this the search can only look at issues already on disk,
+            // and if none are, every issue is skipped and the result reads as
+            // "not found" when nothing was actually searched.
+            JournalSearch.UseDownloader(JournalFetch,
+                Path.Combine(AppDataDirectory, "JournalLibrary"));
 
             // Renewal docketing is idempotent, so running it at every launch is
             // safe and means a mark can never sit in the register without its

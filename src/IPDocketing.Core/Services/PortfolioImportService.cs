@@ -110,12 +110,23 @@ public class PortfolioImportService
         var idxRenewal = IndexOf("RenewalDueDate", "RenewalDue", "ValidUpto", "ValidUpTo");
         var idxAlert = IndexOf("PortalAlert", "Alert", "Remarks");
 
-        if (idxMark < 0)
+        // A mark column is preferred but not required - the Filed Applications
+        // listing has no mark column at all, only application numbers. Those
+        // rows still make perfectly good docket records; the name gets filled
+        // in from the e-Status page later.
+        if (idxMark < 0 && idxApp < 0)
         {
             issues.Add(new RowIssue(1, "Mark",
-                "No column for the mark itself. Expected one of: Mark, Title, TradeMark, WordMark, BrandName.", true));
+                "No column for the mark and none for the application number. One of the two is needed " +
+                "to identify a record. Mark aliases: Mark, Title, TradeMark, WordMark, BrandName. " +
+                "Application number aliases: ApplicationNumber, AppNo, TMNumber, Form/Application Number.", true));
             return new ValidationReport(rows, issues, 0, 0);
         }
+
+        if (idxMark < 0)
+            issues.Add(new RowIssue(1, "Mark",
+                "No mark column found, so each row is recorded under its application number and flagged " +
+                "for the name to be filled in. Run a Guided e-Status pass afterwards to pull the marks.", false));
 
         // Loaded once rather than per row - a 500-row import otherwise runs
         // 1,000 queries and takes visibly long enough to look broken.
@@ -134,15 +145,25 @@ public class PortfolioImportService
                     ? cells[index].Trim()
                     : null;
 
+            var applicationNumber = Cell(idxApp);
             var mark = Cell(idxMark);
+
             if (mark is null)
             {
-                issues.Add(new RowIssue(lineNumber, "Mark", "No mark on this row - skipped.", false));
-                continue;
-            }
+                if (applicationNumber is null)
+                {
+                    issues.Add(new RowIssue(lineNumber, "Mark",
+                        "Neither a mark nor an application number on this row - skipped.", false));
+                    continue;
+                }
 
-            var applicationNumber = Cell(idxApp);
+                // Placeholder title, deliberately obvious rather than blank, so
+                // these rows are findable and clearly incomplete rather than
+                // looking like a mark genuinely named after a number.
+                mark = $"[Unnamed - app {applicationNumber}]";
+            }
             var matterNumber = Cell(idxMatter);
+
 
             // Duplicate detection inside the file itself, which is a far more
             // common problem than duplicates against the database.

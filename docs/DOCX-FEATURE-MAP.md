@@ -562,3 +562,65 @@ round-trips, and the number box doesn't exist until the radio does.
 
 The modal-close step was added after re-reading screenshot 7 — the modal overlays
 the panel buttons, so without closing it the second panel could never be opened.
+
+---
+
+# Phase 45
+
+## Import failure: "No column is mapped to Mark"
+
+Your screenshot was right and the importer was wrong. The **Filed Applications**
+page has no mark column at all — Sr.No, Form Type, Temp#, Form/Application
+Number, Class, Filing Date, Appl. Type, Appl. Ref. No., Appl. Status. Nothing
+else. Refusing to import without a mark made that entire page unimportable.
+
+An application number *is* a usable identity for a docket record. A mark is now
+required only when there's no application number. Rows without one are recorded
+as `[Unnamed - app 7837113]` — deliberately obvious rather than blank, so they're
+findable and clearly incomplete — and a Guided e-Status pass fills in the real
+name afterwards.
+
+## Journal search: why "not found" kept coming back
+
+The search only ever looked at issues whose PDF had already been downloaded,
+and nothing had downloaded any. Every issue was skipped, **zero pages were
+searched**, and the honest "0 hits" read exactly like "the name isn't in the
+Journal". Those are completely different answers.
+
+Two fixes:
+
+- The search now **downloads what it needs** before searching, rather than
+  skipping it.
+- When nothing could be obtained, it says so in capitals: *NOTHING WAS SEARCHED
+  — this is not the same as the name being absent.*
+
+## Tesseract
+
+Added as the preferred OCR engine, driven as a **subprocess** rather than
+through a .NET binding. That was a deliberate call:
+
+- The common `Tesseract` NuGet wrapper ships x86/x64 natives only — **no
+  win-arm64**. On your Snapdragon it fails at load with a `DllNotFoundException`
+  that explains nothing. `NAPS2.Tesseract.Binaries` is the only package I found
+  publishing Windows ARM64 builds, and what it publishes is the executable.
+- The in-process wrappers also need the VS2022 C++ redist, which isn't on every
+  machine.
+- A subprocess isolates crashes: a segfault on a malformed page kills a child,
+  not the app.
+
+Everything now routes through `ChainedTextExtractor`, in strict order:
+
+1. **PDF text layer** — exact characters, always preferred
+2. **Tesseract** — for pages with no text layer, when installed
+3. **Windows OCR** — always-available fallback
+
+The ordering is not arbitrary. OCRing a page that already has a text layer
+replaces real characters with guesses, which on a mark like "KWIK BRITE" is
+exactly how you lose a conflict you should have caught.
+
+Documents filed from the portal are now OCR'd on ingest and their text stored on
+the record, so they're searchable rather than opaque files.
+
+**Not bundled**: binaries plus English data are ~45 MB, which would undo the
+publish trimming. Settings has a locator, and reports which engine is actually
+live. Without Tesseract the app falls back automatically — nothing breaks.

@@ -842,7 +842,17 @@ public sealed partial class IpIndiaPortalPage : Page
                             matter.Id, Convert.FromBase64String(base64),
                             description, panel, contentType, ParsePortalDate(dateText));
 
-                        if (result.Saved) filed++;
+                        if (result.Saved)
+                        {
+                            filed++;
+
+                            // OCR the freshly filed document so its text is
+                            // searchable. Deliberately after the file is safely
+                            // on disk - a failure here loses text, not the
+                            // document.
+                            if (result.DocumentId is { } docId)
+                                _ = App.DocumentIngest.ExtractTextAsync(docId);
+                        }
                         else notes.Add($"{description}: {result.Reason}");
                     }
 

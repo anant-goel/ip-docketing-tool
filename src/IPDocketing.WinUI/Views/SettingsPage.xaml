@@ -62,6 +62,27 @@
             </Border>
 
             <!-- API keys -->
+            <Border Style="{StaticResource GlassSurfaceStyle}">
+                <StackPanel Spacing="10">
+                    <TextBlock Text="OCR engine" FontWeight="SemiBold" FontSize="16"
+                               Foreground="{ThemeResource TextPrimaryBrush}" />
+                    <TextBlock TextWrapping="Wrap" FontSize="12" Foreground="{ThemeResource TextSecondaryBrush}"
+                               Text="Documents are read text-layer first (exact), then by OCR only for pages that have none. Tesseract is markedly better than the built-in Windows engine on the display type and coined words a trademark journal is full of." />
+                    <Border Style="{StaticResource PillBadgeStyle}" HorizontalAlignment="Left">
+                        <TextBlock x:Name="OcrEngineText" FontSize="11" FontWeight="SemiBold"
+                                   Foreground="{StaticResource WarningBrush}" Text="Checking..." />
+                    </Border>
+                    <TextBlock x:Name="OcrPathText" FontSize="11" TextWrapping="Wrap" IsTextSelectionEnabled="True"
+                               Foreground="{ThemeResource TextTertiaryBrush}" />
+                    <StackPanel Orientation="Horizontal" Spacing="10">
+                        <Button Content="Locate tesseract.exe..." Style="{StaticResource MergedGlassButtonBaseStyle}"
+                                Click="ChooseTesseract_Click" />
+                        <Button Content="Where do I get it?" Style="{StaticResource MergedGlassButtonBaseStyle}"
+                                Click="TesseractHelp_Click" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
             <!-- Gmail OTP credentials. This was the missing piece: the app looks
                  for gmail_client_secret.json in its data folder, but nothing in
                  the UI said so, told you where the folder was, or let you put

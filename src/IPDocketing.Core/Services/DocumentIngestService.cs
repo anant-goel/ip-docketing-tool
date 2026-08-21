@@ -26,6 +26,7 @@ public class DocumentIngestService
     private readonly AppDbContext _db;
     private readonly AuditService _audit;
     private readonly string _storeRoot;
+    private IDocumentTextExtractor? _extractor;
 
     public DocumentIngestService(AppDbContext db, AuditService audit, string storeRoot)
     {
@@ -33,6 +34,49 @@ public class DocumentIngestService
         _audit = audit;
         _storeRoot = storeRoot;
         Directory.CreateDirectory(_storeRoot);
+    }
+
+    /// <summary>
+    /// Gives ingestion a text reader, so every document filed from the portal
+    /// is OCR'd and its text stored on the record. Without this, documents are
+    /// saved as opaque files - present on the matter, but not searchable, which
+    /// defeats most of the point of collecting them.
+    /// </summary>
+    public void UseExtractor(IDocumentTextExtractor extractor) => _extractor = extractor;
+
+    /// <summary>
+    /// Reads a stored document and caches its text. Runs after the file is
+    /// safely on disk, and a failure here never undoes the filing - a document
+    /// that could not be OCR'd is still a document you have.
+    /// </summary>
+    public async Task<bool> ExtractTextAsync(int documentId, CancellationToken ct = default)
+    {
+        if (_extractor is null) return false;
+
+        var document = _db.Documents.FirstOrDefault(d => d.Id == documentId);
+        if (document is null || document.OcrProcessed) return false;
+        if (!File.Exists(document.FilePath)) return false;
+
+        // Only PDFs go through the PDF reader; images would need a different
+        // path and are rare off this portal.
+        if (!document.FilePath.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase)) return false;
+
+        try
+        {
+            var result = await _extractor.ExtractAsync(document.FilePath, ct);
+            document.OcrProcessed = true;
+            document.OcrText = result.Succeeded
+                ? (result.Text.Length > 200_000 ? result.Text[..200_000] : result.Text)
+                : null;
+            _db.SaveChanges();
+            return result.Succeeded;
+        }
+        catch
+        {
+            document.OcrProcessed = true;
+            _db.SaveChanges();
+            return false;
+        }
     }
 
     public sealed record IngestResult(
