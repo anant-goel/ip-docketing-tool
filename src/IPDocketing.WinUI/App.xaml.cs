@@ -64,6 +64,51 @@ public partial class App : Application
         }
     }
 
+    /// <summary>
+    /// Reads holidays.txt from the data folder into the holiday calendar.
+    ///
+    /// Only fixed-date national holidays are compiled in. India's calendar is
+    /// largely movable - Diwali, Holi, Eid, Good Friday - and per-branch
+    /// closures differ between Delhi, Mumbai, Kolkata, Chennai and Ahmedabad.
+    /// Those cannot be computed, so they have to be pasted in each year from the
+    /// CGPDTM notification. The file is created with instructions on first run,
+    /// because a seam nobody can find is the same as no seam at all.
+    /// </summary>
+    private static void LoadOfficeClosures(HolidayCalendarService calendar, string appDataDirectory)
+    {
+        var path = Path.Combine(appDataDirectory, "holidays.txt");
+
+        if (!File.Exists(path))
+        {
+            File.WriteAllText(path,
+                "# Office closures for deadline rolling." + Environment.NewLine +
+                "# One date per line as yyyy-MM-dd, optionally followed by a note." + Environment.NewLine +
+                "# Only fixed-date national holidays are built in - paste the movable" + Environment.NewLine +
+                "# ones (Diwali, Holi, Eid, Good Friday) and any branch closures from" + Environment.NewLine +
+                "# the CGPDTM annual holiday notification here each year." + Environment.NewLine +
+                "#" + Environment.NewLine +
+                "# Example:" + Environment.NewLine +
+                "# 2026-11-08  Diwali" + Environment.NewLine);
+            return;
+        }
+
+        var dates = new List<DateTime>();
+        foreach (var line in File.ReadAllLines(path))
+        {
+            var trimmed = line.Trim();
+            if (trimmed.Length == 0 || trimmed.StartsWith('#')) continue;
+
+            var token = trimmed.Split(new[] { ' ', '\t' }, 2)[0];
+            if (DateTime.TryParseExact(token, "yyyy-MM-dd",
+                System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.None, out var parsed))
+                dates.Add(parsed);
+        }
+
+        if (dates.Count > 0)
+            calendar.AddOfficeClosures(HolidayCalendarService.IndiaCalendarId, dates);
+    }
+
     /// <summary>Whether the unattended Journal pipeline is running. Persisted between sessions.</summary>
     public static bool AutoSyncEnabled { get; private set; }
 
@@ -180,6 +225,24 @@ public partial class App : Application
 
         DatabasePath = Path.Combine(AppDataDirectory, "ipdocketing.db");
 
+        // A restore staged from Settings lands here, before anything opens the
+        // database. It cannot be applied at the time the user asks, because EF
+        // Core holds an open connection to the file being replaced and swapping
+        // it underneath a live DbContext corrupts rather than restores.
+        try
+        {
+            var pendingRestore = DatabasePath + ".restore-pending";
+            if (File.Exists(pendingRestore))
+            {
+                File.Copy(pendingRestore, DatabasePath, overwrite: true);
+                File.Delete(pendingRestore);
+            }
+        }
+        catch (Exception ex)
+        {
+            LogCrash("Applying staged restore", ex);
+        }
+
         var sealedDb = Path.Combine(AppDataDirectory, "ipdocketing.db.enc");
         if (!File.Exists(DatabasePath) && File.Exists(sealedDb))
         {
@@ -277,6 +340,20 @@ public partial class App : Application
             JournalFetch = new JournalFetchService();
             StatusTracker = new StatusTrackerService(Database);
             TeamNotifications = new TeamNotificationService(Database);
+            // HolidayCalendarService.AddOfficeClosures existed with no caller,
+            // so the movable Indian holidays it was designed to receive were
+            // never loaded and deadlines could roll onto Diwali. This reads a
+            // user-editable list; the file is created with a worked example on
+            // first run so it is discoverable rather than secret.
+            try
+            {
+                LoadOfficeClosures(Calendar, AppDataDirectory);
+            }
+            catch (Exception ex)
+            {
+                LogCrash("Loading office closures", ex);
+            }
+
             Renewals = new RenewalService(Database, Audit, Calendar);
             PortfolioImport = new PortfolioImportService(Database, Matters, Audit);
 
@@ -326,26 +403,19 @@ public partial class App : Application
 
         });
 
-        // Applied here, before any window/page exists, so every page's
-        // StaticResource lookups pick up the override from the start
-        // rather than needing a live re-theme (which StaticResource
-        // doesn't support - only ThemeResource does, and these accent
-        // colors are plain static values shared across Light/Dark).
+        // Accent palette. Applied by re-colouring the shared brush objects in
+        // place (see AccentPaletteService) rather than by merging a dictionary.
+        // The old approach reached only the handful of keys ColorfulAccent.xaml
+        // redefines, and missed the acrylic tint on AccentGlassButtonBrush and
+        // the LiquidPrimaryBrush gradient - which is most of what you actually
+        // see - so "Colorful" appeared to do nothing.
         try
         {
-            var themeSettingPath = Path.Combine(AppDataDirectory, "theme-preference.txt");
-            var savedTheme = File.Exists(themeSettingPath) ? File.ReadAllText(themeSettingPath).Trim() : "Dark";
-            if (savedTheme == "Colorful")
-            {
-                Resources.MergedDictionaries.Add(new ResourceDictionary
-                {
-                    Source = new Uri("ms-appx:///Themes/ColorfulAccent.xaml")
-                });
-            }
+            Services.AccentPaletteService.ApplySaved(AppDataDirectory);
         }
-        catch
+        catch (Exception ex)
         {
-            // Falls back to the default blue accent - never worth crashing over.
+            LogCrash("Accent palette", ex);
         }
 
         // Off unless previously switched on: the first pass pulls several large

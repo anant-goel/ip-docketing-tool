@@ -523,3 +523,42 @@ shapes:
 so the description column is found **by header name**, not by index. Filing an
 examination report under the wrong label because a column shifted is exactly the
 silent error that makes a docket untrustworthy.
+
+---
+
+# Phase 42
+
+## Gmail OTP credentials — the missing file
+
+The app looks for `gmail_client_secret.json` in `%LocalAppData%\IPDocketing\`,
+but nothing in the UI said so, showed you the folder, or let you put a file
+there. A required setup step with no visible affordance is indistinguishable
+from a broken feature — which is exactly how it looked.
+
+Settings now has a Gmail section: status badge, the exact expected path,
+a file picker, "Open data folder", setup steps, and Remove.
+
+The picker **validates before accepting**. A Google credentials download can be
+an OAuth client, an API key, or a service account, and only an OAuth client of
+type *Desktop app* works here. Each wrong type gets a specific message —
+a service account has no inbox of its own; a Web application client expects a
+redirect URI this app can't provide. Copying the wrong file in would leave the
+app looking configured and then failing deep inside the Google library with a
+message that explains nothing.
+
+Remove also deletes the token store, because that holds a live refresh token —
+leaving it would mean standing mailbox access after you thought you'd revoked it.
+The dialog points at myaccount.google.com for full revocation.
+
+## Guided e-Status run
+
+Walks the flow from your screenshots per application number: tab →
+National/IRDI → type number → **pause for you to solve the captcha and press
+View** → read status → open both panels → file every document.
+
+Each step is a separate call with a wait, because every transition is an ASP.NET
+postback: the National/IRDI radio doesn't exist in the DOM until the tab click
+round-trips, and the number box doesn't exist until the radio does.
+
+The modal-close step was added after re-reading screenshot 7 — the modal overlays
+the panel buttons, so without closing it the second panel could never be opened.

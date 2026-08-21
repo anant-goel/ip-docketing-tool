@@ -145,6 +145,9 @@
                                 HorizontalAlignment="Stretch" Click="BulkFetch_Click" />
                         <TextBlock x:Name="BulkStatusText" FontSize="12" TextWrapping="Wrap"
                                    Foreground="{ThemeResource TextTertiaryBrush}" />
+                        <Button Content="Guided e-Status run" Style="{StaticResource MergedAccentButtonStyle}"
+                                HorizontalAlignment="Stretch" Click="GuidedEStatus_Click"
+                                ToolTipService.ToolTip="Walks the e-Register flow for each number: tab, National/IRDI, number, then pauses for you to type the captcha" />
                         <Button Content="Fetch documents for these numbers"
                                 Style="{StaticResource MergedGlassButtonBaseStyle}"
                                 HorizontalAlignment="Stretch" Click="FetchDocuments_Click"

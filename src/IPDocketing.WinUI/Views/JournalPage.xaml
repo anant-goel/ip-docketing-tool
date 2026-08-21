@@ -82,10 +82,16 @@
                                        Foreground="{ThemeResource TextSecondaryBrush}" />
                             <HyperlinkButton Grid.Column="2" Content="{Binding Url}" NavigateUri="{Binding Url}"
                                              VerticalAlignment="Center" />
-                            <Border Grid.Column="3" Style="{StaticResource PillBadgeStyle}" HorizontalAlignment="Left" VerticalAlignment="Center">
+                            <!-- Actionable now. JournalService.MarkReviewed existed
+                                 but nothing called it, so every issue sat on
+                                 "Pending review" forever with no way to clear it. -->
+                            <Button Grid.Column="3" Style="{StaticResource MergedGlassMiniButtonStyle}"
+                                    HorizontalAlignment="Left" VerticalAlignment="Center"
+                                    Click="ToggleReviewed_Click" Tag="{Binding Id}"
+                                    ToolTipService.ToolTip="Toggle between reviewed and pending">
                                 <TextBlock Text="{Binding ReviewedLabel}" FontSize="11" FontWeight="SemiBold"
-                                           Foreground="{StaticResource AccentBrush}" />
-                            </Border>
+                                           Foreground="{Binding ReviewedBrush}" />
+                            </Button>
                         </Grid>
                     </DataTemplate>
                 </ListView.ItemTemplate>

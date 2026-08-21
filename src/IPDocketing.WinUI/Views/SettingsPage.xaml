@@ -28,7 +28,7 @@
                     </ComboBox>
                     <TextBlock x:Name="ThemeRestartNote" TextWrapping="Wrap" FontSize="12"
                                Foreground="{StaticResource WarningBrush}" Visibility="Collapsed"
-                               Text="Colorful's accent palette applies after you restart the app - Dark/Light/System switch instantly, but this one doesn't." />
+                               Text="Colorful is an accent palette layered on the dark base, not a separate light/dark mode." />
                 </StackPanel>
             </Border>
 
@@ -48,15 +48,50 @@
                         <Button Content="Backup now" Style="{StaticResource LiquidButtonStyle}" Click="BackupNow_Click" />
                         <Button Content="Open backup folder" Style="{StaticResource GlassButtonStyle}" Click="OpenFolder_Click" />
                         <Button Content="Refresh" Style="{StaticResource GlassButtonStyle}" Click="RefreshBackups_Click" />
+                        <!-- BackupService.RestoreFrom existed but had no caller,
+                             so backups could be taken and never restored - which
+                             makes the whole backup feature decorative. -->
+                        <Button Content="Restore selected..." Style="{StaticResource MergedGlassButtonBaseStyle}"
+                                Click="RestoreBackup_Click" />
                     </StackPanel>
                     <TextBlock Text="Recent backups" FontWeight="SemiBold" FontSize="13" Margin="0,6,0,0"
                                Foreground="{ThemeResource TextPrimaryBrush}" />
-                    <ListView x:Name="BackupList" MaxHeight="140" SelectionMode="None"
+                    <ListView x:Name="BackupList" MaxHeight="140" SelectionMode="Single"
                               Background="Transparent" BorderThickness="0" />
                 </StackPanel>
             </Border>
 
             <!-- API keys -->
+            <!-- Gmail OTP credentials. This was the missing piece: the app looks
+                 for gmail_client_secret.json in its data folder, but nothing in
+                 the UI said so, told you where the folder was, or let you put
+                 the file there. A required setup step with no visible affordance
+                 is indistinguishable from a broken feature. -->
+            <Border Style="{StaticResource GlassSurfaceStyle}">
+                <StackPanel Spacing="10">
+                    <TextBlock Text="Gmail OTP auto-fill" FontWeight="SemiBold" FontSize="16"
+                               Foreground="{ThemeResource TextPrimaryBrush}" />
+                    <TextBlock TextWrapping="Wrap" FontSize="12" Foreground="{ThemeResource TextSecondaryBrush}"
+                               Text="Lets the app read the IP India OTP out of your own inbox so you don't retype it. It needs a Google OAuth client JSON, which only you can create — Google issues it to you, not to this app. Read-only Gmail scope; the file and the token never leave this machine." />
+                    <Border x:Name="GmailStatusBorder" Style="{StaticResource PillBadgeStyle}" HorizontalAlignment="Left">
+                        <TextBlock x:Name="GmailStatusText" FontSize="11" FontWeight="SemiBold"
+                                   Foreground="{StaticResource WarningBrush}" Text="Checking..." />
+                    </Border>
+                    <TextBlock x:Name="GmailPathText" FontSize="11" TextWrapping="Wrap" IsTextSelectionEnabled="True"
+                               Foreground="{ThemeResource TextTertiaryBrush}" />
+                    <StackPanel Orientation="Horizontal" Spacing="10">
+                        <Button Content="Choose credentials file..." Style="{StaticResource MergedAccentButtonStyle}"
+                                Click="ChooseGmailCredentials_Click" />
+                        <Button Content="Open data folder" Style="{StaticResource MergedGlassButtonBaseStyle}"
+                                Click="OpenGmailFolder_Click" />
+                        <Button Content="Setup steps" Style="{StaticResource MergedGlassButtonBaseStyle}"
+                                Click="GmailHelp_Click" />
+                        <Button Content="Remove" Style="{StaticResource MergedGlassButtonBaseStyle}"
+                                Click="RemoveGmailCredentials_Click" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
             <Border Style="{StaticResource GlassCardStyle}">
                 <StackPanel Spacing="10">
                     <TextBlock Text="API keys (encrypted at rest)" FontWeight="SemiBold" FontSize="16"

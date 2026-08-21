@@ -54,6 +54,18 @@
              dotnet publish ... -p:TrimWindowsAi=false -->
     <TrimWindowsAi Condition="'$(TrimWindowsAi)' == ''">true</TrimWindowsAi>
 
+    <!-- ARM64 note: nothing here is architecture-specific at the source level.
+         Every dependency is either pure managed (PdfPig, EF Core, HtmlAgilityPack,
+         the Google client libraries) or ships a win-arm64 native asset that the
+         SDK selects from the publish RID (SQLitePCLRaw's e_sqlite3,
+         WebView2Loader, the Windows App SDK runtime). The OCR and PDF-render
+         paths are OS APIs (Windows.Media.Ocr, Windows.Data.Pdf) and are present
+         on ARM64 Windows.
+
+         The one thing that genuinely differs is the WebView2 Evergreen runtime:
+         an ARM64 machine needs the ARM64 runtime installed. Windows 11 on ARM
+         ships it, but a stripped image may not - see docs/ARCHITECTURES.md. -->
+
     <!-- Package versions as overridable properties.
          None of this has been through a compiler yet, and the two most likely
          causes of a first-build failure are version resolution on these. Having
@@ -138,6 +150,8 @@
 
       <!-- Debug symbols and design-time only assemblies. -->
       <_TrimFiles Include="$(PublishDir)*.pdb" />
+      <!-- Arch-suffixed on disk (amd64/arm64/x86), so wildcarded rather than
+           named - the same pattern works for either publish RID. -->
       <_TrimFiles Include="$(PublishDir)Microsoft.DiaSymReader.Native.*.dll" />
       <_TrimFiles Include="$(PublishDir)Microsoft.UI.Designer.dll" />
       <_TrimFiles Include="$(PublishDir)*.xml" Exclude="$(PublishDir)*.config.xml" />

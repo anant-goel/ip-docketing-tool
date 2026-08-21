@@ -585,6 +585,28 @@ internal static class PortalScripts
         (function () {
             var payload = %%PAYLOAD%%;
 
+            // Closing an open modal so the next panel button underneath becomes
+            // clickable again - from your screenshot the modal overlays the
+            // buttons, so without this the second panel can never be opened.
+            if (payload.panel === 'close') {
+                var closed = false;
+                ipdDocuments().forEach(function (doc) {
+                    if (closed) return;
+                    doc.querySelectorAll('button, a, span, div').forEach(function (el) {
+                        if (closed || !ipdVisible(el)) return;
+                        var text = (el.innerText || '').trim();
+                        var cls = (el.className || '').toString().toLowerCase();
+                        var label = (el.getAttribute('aria-label') || '').toLowerCase();
+                        if (text === '×' || text === 'X' || text === 'x' ||
+                            cls.indexOf('close') !== -1 || label.indexOf('close') !== -1 ||
+                            el.getAttribute('data-dismiss') === 'modal') {
+                            try { el.click(); closed = true; } catch (e) { }
+                        }
+                    });
+                });
+                return JSON.stringify({ opened: false, closed: closed, panel: 'close' });
+            }
+
             var wanted = payload.panel === 'correspondence'
                 ? ['correspondence', 'notices']
                 : ['uploaded document', 'uploaded documents'];

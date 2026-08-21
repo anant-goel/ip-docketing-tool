@@ -15,6 +15,15 @@ on:
         options:
           - "Release"
           - "Debug"
+      architecture:
+        description: "Which processor architecture(s) to build"
+        required: true
+        type: choice
+        default: "both"
+        options:
+          - "both"
+          - "x64 only"
+          - "arm64 only"
       create_release:
         description: "Attach the built .zip to a GitHub Release for this run"
         required: true
@@ -28,8 +37,33 @@ permissions:
   contents: write
 
 jobs:
+  # Decides which architectures this run should build, from the dropdown above.
+  # Done as a separate job because a matrix cannot be built from an input
+  # expression directly - it has to come from a job output.
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.pick.outputs.matrix }}
+    steps:
+      - id: pick
+        shell: bash
+        run: |
+          case "${{ inputs.architecture }}" in
+            "x64 only")   echo 'matrix={"rid":["win-x64"]}' >> "$GITHUB_OUTPUT" ;;
+            "arm64 only") echo 'matrix={"rid":["win-arm64"]}' >> "$GITHUB_OUTPUT" ;;
+            *)            echo 'matrix={"rid":["win-x64","win-arm64"]}' >> "$GITHUB_OUTPUT" ;;
+          esac
+
   build:
+    needs: plan
     runs-on: windows-latest
+
+    strategy:
+      # Both architectures are built independently. fail-fast off so an arm64
+      # problem doesn't throw away a good x64 build (or vice versa) - the whole
+      # point of building both is finding out which ones work.
+      fail-fast: false
+      matrix: ${{ fromJson(needs.plan.outputs.matrix) }}
 
     # Map the optional signing secret into an env var so the step-level
     # `if:` can test it. Secrets themselves cannot be referenced directly
@@ -53,15 +87,15 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.nuget/packages
-          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj') }}
-          restore-keys: nuget-${{ runner.os }}-
+          key: nuget-${{ runner.os }}-${{ matrix.rid }}-${{ hashFiles('**/*.csproj') }}
+          restore-keys: nuget-${{ runner.os }}-${{ matrix.rid }}-
 
       # Restore is the step most likely to fail on a first build, so it reports
       # the resolved package versions before anything else runs. If it dies on
       # Microsoft.WindowsAppSDK, see docs/BUILD-TROUBLESHOOTING.md and override:
       #   -p:WindowsAppSdkVersion=1.7.250606001
       - name: Restore
-        run: dotnet restore src/IPDocketing.WinUI/IPDocketing.WinUI.csproj
+        run: dotnet restore src/IPDocketing.WinUI/IPDocketing.WinUI.csproj -r ${{ matrix.rid }}
 
       - name: Report resolved package versions
         shell: pwsh
@@ -91,13 +125,13 @@ jobs:
       - name: Build (quick verification)
         run: >
           dotnet build src/IPDocketing.WinUI/IPDocketing.WinUI.csproj
-          -c ${{ inputs.configuration }} -r win-x64 --no-restore
+          -c ${{ inputs.configuration }} -r ${{ matrix.rid }} --no-restore
 
       - name: Publish self-contained WinUI 3 app
         run: >
           dotnet publish src/IPDocketing.WinUI/IPDocketing.WinUI.csproj
           -c ${{ inputs.configuration }}
-          -r win-x64
+          -r ${{ matrix.rid }}
           --self-contained true
           -o publish
 
@@ -124,8 +158,11 @@ jobs:
           $pfxPath = Join-Path $env:RUNNER_TEMP "codesign.pfx"
           [IO.File]::WriteAllBytes($pfxPath, [Convert]::FromBase64String($env:CODE_SIGN_PFX_BASE64))
 
+          # signtool runs on the RUNNER (x64), regardless of which architecture
+          # the binary targets - a signing tool signs any PE file. Picking an
+          # arm64 signtool here would give an exe that cannot run on the runner.
           $signtool = Get-ChildItem -Path "C:\Program Files (x86)\Windows Kits\10\bin" -Recurse -Filter "signtool.exe" |
-            Where-Object { $_.FullName -match "x64" } | Select-Object -First 1 -ExpandProperty FullName
+            Where-Object { $_.FullName -match "\\x64\\" } | Select-Object -First 1 -ExpandProperty FullName
 
           & $signtool sign /f $pfxPath /p $env:CODE_SIGN_PFX_PASSWORD `
             /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 `
@@ -174,22 +211,25 @@ jobs:
       - name: Zip publish output into a single archive
         shell: pwsh
         run: |
-          Compress-Archive -Path publish\* -DestinationPath IPDocketing-win-x64.zip -Force
+          Compress-Archive -Path publish\* -DestinationPath IPDocketing-${{ matrix.rid }}.zip -Force
 
       - name: Upload build artifact (single zip)
         uses: actions/upload-artifact@v4
         with:
-          name: IPDocketing-win-x64
-          path: IPDocketing-win-x64.zip
+          name: IPDocketing-${{ matrix.rid }}
+          path: IPDocketing-${{ matrix.rid }}.zip
           if-no-files-found: error
           retention-days: 30
 
+      # Both matrix jobs target the same tag on purpose, so one release ends up
+      # carrying both architectures' zips. The action updates an existing
+      # release rather than failing when the second job arrives.
       - name: Create GitHub Release (optional)
         if: inputs.create_release == true
         uses: softprops/action-gh-release@v2
         with:
           tag_name: manual-run-${{ github.run_number }}
           name: "Manual build #${{ github.run_number }}"
-          files: IPDocketing-win-x64.zip
+          files: IPDocketing-${{ matrix.rid }}.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

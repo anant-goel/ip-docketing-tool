@@ -149,6 +149,28 @@ public sealed partial class JournalPage : Page
     /// which is what you want when checking "did anything go through under
     /// KARTIK TRADE MARKS COMPANY this week?".
     /// </summary>
+    /// <summary>
+    /// Flips an issue between reviewed and pending.
+    ///
+    /// JournalService.MarkReviewed has existed since an early phase but nothing
+    /// ever called it, so every issue displayed "Pending review" permanently and
+    /// there was no way to clear it - which made the list look broken even when
+    /// the fetch had worked.
+    /// </summary>
+    private void ToggleReviewed_Click(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
+    {
+        if (sender is not Button { Tag: int id }) return;
+
+        var issue = App.Journal.GetAll().FirstOrDefault(j => j.Id == id);
+        if (issue is null) return;
+
+        App.Journal.MarkReviewed(id, !issue.Reviewed);
+        App.Audit.Log("Update", "JournalIssue", id,
+            $"Marked issue {issue.IssueNumber} as {(!issue.Reviewed ? "reviewed" : "pending review")}.");
+
+        LoadIssues();
+    }
+
     private async void FindName_Click(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
     {
         var input = new TextBox
@@ -438,6 +460,7 @@ public sealed partial class JournalPage : Page
         public string PublicationDate { get; }
         public string Url { get; }
         public string ReviewedLabel { get; }
+        public Microsoft.UI.Xaml.Media.SolidColorBrush ReviewedBrush { get; }
 
         public IssueRow(JournalIssue j)
         {
@@ -446,6 +469,10 @@ public sealed partial class JournalPage : Page
             PublicationDate = j.PublicationDate.ToString("dd MMM yyyy");
             Url = j.Url;
             ReviewedLabel = j.Reviewed ? "Reviewed" : "Pending review";
+            ReviewedBrush = new Microsoft.UI.Xaml.Media.SolidColorBrush(
+                j.Reviewed
+                    ? Windows.UI.Color.FromArgb(255, 53, 208, 113)
+                    : Windows.UI.Color.FromArgb(255, 255, 170, 36));
         }
     }
 

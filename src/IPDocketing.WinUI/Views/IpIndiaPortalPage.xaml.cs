@@ -677,6 +677,194 @@ public sealed partial class IpIndiaPortalPage : Page
     }
 
     /// <summary>
+    /// Walks the e-Register flow you described, one application number at a
+    /// time: click the Trade Mark Application/Registered Mark tab, select
+    /// National/IRDI Number, type the number, then STOP and wait while you read
+    /// the captcha and press View. Once the result is up it reads the status,
+    /// opens both panels, and files every document.
+    ///
+    /// The pause is not a limitation I am working around - it is the design.
+    /// The Registry put that captcha there to say bulk automated access is not
+    /// on offer, and the honest maximum is to do every mechanical step for you
+    /// and leave the one step that is deliberately human to you.
+    ///
+    /// Each navigation step is a separate script call with a wait between,
+    /// because every transition is an ASP.NET postback: the National/IRDI radio
+    /// does not exist in the DOM until the tab click has round-tripped, and the
+    /// number box does not exist until the radio has.
+    /// </summary>
+    private async void GuidedEStatus_Click(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
+    {
+        var numbers = (BulkNumbersBox.Text ?? "")
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(n => n.Length > 0).Distinct().ToList();
+
+        if (numbers.Count == 0)
+        {
+            BulkStatusText.Text = "Paste at least one application number first.";
+            return;
+        }
+
+        if (Browser.CoreWebView2 is null)
+        {
+            BulkStatusText.Text = "The embedded browser isn't ready yet.";
+            return;
+        }
+
+        var matters = App.Matters.GetAll()
+            .Where(m => !string.IsNullOrWhiteSpace(m.ApplicationNumber))
+            .ToDictionary(m => m.ApplicationNumber!.Trim(), m => m, StringComparer.OrdinalIgnoreCase);
+
+        _bulkResults.Clear();
+        var filedTotal = 0;
+
+        foreach (var number in numbers)
+        {
+            matters.TryGetValue(number, out var matter);
+
+            BulkStatusText.Text = $"{number}: opening the search form...";
+
+            var tab = await RunScriptAsync(PortalScripts.EStatusStep, new { step = "tab", value = "" });
+            await System.Threading.Tasks.Task.Delay(1800);
+
+            await RunScriptAsync(PortalScripts.EStatusStep, new { step = "national", value = "" });
+            await System.Threading.Tasks.Task.Delay(1500);
+
+            var typed = await RunScriptAsync(PortalScripts.EStatusStep, new { step = "number", value = number });
+            var typedOk = typed is { } t && t.TryGetProperty("ok", out var tk) && tk.ValueKind == JsonValueKind.True;
+
+            if (!typedOk)
+            {
+                _bulkResults.Add(new FetchedStatusRow(number,
+                    "Couldn't find the Trade Mark/Application Number box. Sign in and land on the " +
+                    "E-Register page first, then re-run.", false));
+                continue;
+            }
+
+            // Hand back to the human for the captcha.
+            var wait = new ContentDialog
+            {
+                XamlRoot = XamlRoot,
+                Title = $"Captcha needed for {number}",
+                Content = new TextBlock
+                {
+                    Text = $"{number} has been typed into the form.\n\n" +
+                           "Read the captcha on the page, type it into 'Enter the captcha Code', " +
+                           "and press View. Wait for the Matching Trade Marks result to appear, " +
+                           "then press Continue here.\n\n" +
+                           "Press Skip to move on without reading this one.",
+                    TextWrapping = Microsoft.UI.Xaml.TextWrapping.Wrap
+                },
+                PrimaryButtonText = "Continue",
+                SecondaryButtonText = "Skip",
+                CloseButtonText = "Stop the run",
+                DefaultButton = ContentDialogButton.Primary
+            };
+
+            var choice = await wait.ShowAsync();
+            if (choice == ContentDialogResult.None) break;
+            if (choice == ContentDialogResult.Secondary)
+            {
+                _bulkResults.Add(new FetchedStatusRow(number, "Skipped.", false));
+                continue;
+            }
+
+            // --- read the status block ---
+            var statusPayload = await RunScriptAsync(PortalScripts.ReadStatusResult);
+            var status = statusPayload is { } sp && sp.TryGetProperty("status", out var st)
+                ? st.GetString()
+                : null;
+
+            var markName = "";
+            if (statusPayload is { } fp && fp.TryGetProperty("fields", out var fields) &&
+                fields.ValueKind == JsonValueKind.Object)
+            {
+                foreach (var field in fields.EnumerateObject())
+                    if (field.Name.Contains("Trade Mark", StringComparison.OrdinalIgnoreCase) &&
+                        !field.Name.Contains("No", StringComparison.OrdinalIgnoreCase))
+                        markName = field.Value.GetString() ?? "";
+            }
+
+            if (matter is not null && !string.IsNullOrWhiteSpace(status))
+                App.DocumentIngest.ApplyStatus(matter.Id, status, null);
+
+            // --- both document panels ---
+            var filed = 0;
+            var notes = new List<string>();
+
+            if (matter is null)
+            {
+                notes.Add("No matching matter in the docket, so documents were not filed.");
+            }
+            else
+            {
+                foreach (var panel in new[] { "documents", "correspondence" })
+                {
+                    BulkStatusText.Text = $"{number}: opening {panel}...";
+
+                    var opened = await RunScriptAsync(PortalScripts.OpenResultPanel, new { panel });
+                    if (opened is not { } op || !op.TryGetProperty("opened", out var wasOpen) ||
+                        wasOpen.ValueKind != JsonValueKind.True)
+                    {
+                        notes.Add($"{panel}: panel button not found.");
+                        continue;
+                    }
+
+                    await System.Threading.Tasks.Task.Delay(1400);
+
+                    var rowsPayload = await RunScriptAsync(PortalScripts.ReadOpenPanelRows);
+                    if (rowsPayload is not { } rp || !rp.TryGetProperty("rows", out var rows)) continue;
+
+                    foreach (var row in rows.EnumerateArray())
+                    {
+                        var url = row.TryGetProperty("url", out var u) ? u.GetString() : null;
+                        if (string.IsNullOrWhiteSpace(url)) continue;
+
+                        var description = row.TryGetProperty("description", out var d) ? d.GetString() ?? "" : "";
+                        var dateText = row.TryGetProperty("date", out var dt) ? dt.GetString() : null;
+
+                        var fetched = await RunScriptAsync(PortalScripts.FetchFileAsBase64, new { url });
+                        if (fetched is not { } fpay ||
+                            !fpay.TryGetProperty("ok", out var ok) || ok.ValueKind != JsonValueKind.True)
+                        {
+                            var reason = fetched is { } fr && fr.TryGetProperty("reason", out var rr)
+                                ? rr.GetString() : "unknown";
+                            notes.Add($"{description}: {reason}");
+                            continue;
+                        }
+
+                        var base64 = fpay.TryGetProperty("data", out var dataEl) ? dataEl.GetString() : null;
+                        if (string.IsNullOrWhiteSpace(base64)) continue;
+
+                        var contentType = fpay.TryGetProperty("contentType", out var ct) ? ct.GetString() : null;
+
+                        var result = App.DocumentIngest.Ingest(
+                            matter.Id, Convert.FromBase64String(base64),
+                            description, panel, contentType, ParsePortalDate(dateText));
+
+                        if (result.Saved) filed++;
+                        else notes.Add($"{description}: {result.Reason}");
+                    }
+
+                    // Close the modal so the next panel button is clickable.
+                    await RunScriptAsync(PortalScripts.OpenResultPanel, new { panel = "close" });
+                    await System.Threading.Tasks.Task.Delay(600);
+                }
+            }
+
+            filedTotal += filed;
+
+            var label = string.IsNullOrWhiteSpace(markName) ? number : $"{number} — {markName}";
+            var summary = $"Status: {status ?? "not read"}. {filed} document(s) filed.";
+            if (notes.Count > 0) summary += " " + string.Join(" ", notes.Take(3));
+
+            _bulkResults.Add(new FetchedStatusRow(label, summary, false));
+        }
+
+        BulkStatusText.Text = $"Run finished — {filedTotal} document(s) filed across {numbers.Count} number(s).";
+    }
+
+    /// <summary>
     /// Walks the application numbers in the bulk box, opens each one's status
     /// page inside the session you already unlocked, and files every document
     /// it lists against the matching matter.

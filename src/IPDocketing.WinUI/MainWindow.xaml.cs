@@ -151,14 +151,42 @@ public sealed partial class MainWindow : Window
         {
             "Light" => ElementTheme.Light,
             "System" => ElementTheme.Default,
+            // "Colorful" is an accent palette layered on the dark base.
             _ => ElementTheme.Dark
         };
+
+        try
+        {
+            Services.AccentPaletteService.Apply(Services.AccentPaletteService.ForName(saved));
+        }
+        catch
+        {
+            // Cosmetic only.
+        }
     }
 
     /// <summary>Called from SettingsPage when the user changes the theme picker.</summary>
     public void SetTheme(ElementTheme theme, string settingValue)
     {
         RootGrid.RequestedTheme = theme;
+
+        // Colorful is an accent palette, not a light/dark mode - it sits on top
+        // of Dark. Selecting it keeps the dark base and swaps the accents.
+        if (settingValue == "Colorful") RootGrid.RequestedTheme = ElementTheme.Dark;
+
+        // WinUI rebuilds ThemeDictionary brushes when the element theme flips,
+        // which throws away in-place colour changes. Re-applying afterwards is
+        // what makes the palette survive a Light/Dark switch.
+        try
+        {
+            Services.AccentPaletteService.Apply(
+                Services.AccentPaletteService.ForName(settingValue));
+        }
+        catch
+        {
+            // Cosmetic only - never worth failing a theme change over.
+        }
+
         try
         {
             Directory.CreateDirectory(App.AppDataDirectory);
