@@ -600,118 +600,6 @@ public sealed partial class IpIndiaPortalPage : Page
         FillResultText.Text = "Field report shown, and saved to the Reports folder.";
     }
 
-    /// <summary>
-    /// Reads the status fields and document links off whatever e-Status
-    /// result is currently rendered. Returns {} when the page has nothing
-    /// on it yet, which is how the caller knows to wait and read again.
-    /// </summary>
-    private const string BulkStatusScript = """
-    (function() {
-        function norm(s) {
-            return (s || '').replace(/\u00a0/g, ' ').replace(/\s+/g, ' ').trim();
-        }
-
-        // BUG FIX. The old version was:
-        //
-        //     document.evaluate("//tr[contains(., 'Status')]", ...)
-        //         .singleNodeValue.querySelectorAll('td')  ->  last cell
-        //
-        // Three things were wrong with it, and together they are
-        // why this returned either nothing or the whole page:
-        //
-        //  1. FIRST_ORDERED_NODE_TYPE returns the first row in
-        //     DOCUMENT order that contains the text anywhere in
-        //     its subtree. On an ASP.NET page built from nested
-        //     layout tables, that is the OUTERMOST row - the one
-        //     wrapping the entire result area - so the "value"
-        //     came back as the whole page's text.
-        //  2. It matched the label anywhere in the row, so
-        //     'Class' matched a row reading "Classification of
-        //     goods" and 'Status' matched any row mentioning it.
-        //  3. It returned the LAST cell of the row rather than
-        //     the cell after the label, which is a different cell
-        //     on any row with more than two columns.
-        //
-        // Now: walk every row that has no nested row of its own
-        // (the innermost, i.e. the real data row), find the CELL
-        // whose own text is the label, and take the next
-        // non-empty cell. Label/value pairs laid out in one cell
-        // ("Status: Registered") are handled too.
-        function findByLabel(label) {
-            var wanted = label.toLowerCase();
-            var rows = document.querySelectorAll('tr');
-
-            for (var r = 0; r < rows.length; r++) {
-                var row = rows[r];
-                if (row.querySelector('tr')) continue;   // not innermost
-
-                var cells = row.querySelectorAll('th, td');
-                for (var c = 0; c < cells.length; c++) {
-                    var text = norm(cells[c].innerText).toLowerCase()
-                                   .replace(/[:\-\s]+$/, '');
-
-                    // The label cell says the label and little
-                    // else - a cap keeps a paragraph that merely
-                    // mentions the word from qualifying.
-                    if (text === wanted ||
-                        (text.indexOf(wanted) === 0 && text.length <= wanted.length + 6)) {
-                        for (var n = c + 1; n < cells.length; n++) {
-                            var value = norm(cells[n].innerText);
-                            if (value.length > 0) return value;
-                        }
-                    }
-                }
-
-                // Label and value inside one cell.
-                for (var c2 = 0; c2 < cells.length; c2++) {
-                    var whole = norm(cells[c2].innerText);
-                    var re = new RegExp('^' + wanted.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*:\\s*(.+)$', 'i');
-                    var m = re.exec(whole);
-                    if (m && m[1].trim().length > 0) return m[1].trim();
-                }
-            }
-            return '';
-        }
-
-        var fields = {
-            status: findByLabel('Status'),
-            applicationNo: findByLabel('Application No') || findByLabel('Application Number'),
-            tmClass: findByLabel('Class'),
-            proprietor: findByLabel('Proprietor') || findByLabel('Proprietor Name'),
-            agent: findByLabel('Agent') || findByLabel('Attorney'),
-            validUpto: findByLabel('Valid upto') || findByLabel('Valid') || findByLabel('Renewed')
-        };
-
-        // Look for a documents table: any table where most rows
-        // end in an <a href> (name/date/link per row, matching
-        // the reference repo's uploaded-documents pattern).
-        //
-        // Navigation and footer links used to be counted here as
-        // "document link(s) found", which made every number look
-        // like it had documents. Anchors that only go somewhere
-        // else on the site are now excluded; a document link
-        // points at a file or a download handler.
-        var docLinks = [];
-        var seen = {};
-        document.querySelectorAll('table').forEach(function(table) {
-            var anchors = table.querySelectorAll('a[href]');
-            if (anchors.length < 1 || anchors.length > 20) return;
-            anchors.forEach(function(a) {
-                var href = a.href || '';
-                var text = norm(a.innerText);
-                if (text.length === 0) return;
-                if (!/\.(pdf|tiff?|jpe?g|png|zip)(\?|$)/i.test(href) &&
-                    !/download|document|viewfile|getfile|attachment/i.test(href)) return;
-                if (seen[href]) return;
-                seen[href] = true;
-                docLinks.push(text + '|' + href);
-            });
-        });
-
-        return JSON.stringify({ fields: fields, docs: docLinks.slice(0, 10) });
-    })();
-    """;
-
     private async void BulkFetch_Click(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
     {
         var numbers = (BulkNumbersBox.Text ?? "")
@@ -753,76 +641,76 @@ public sealed partial class IpIndiaPortalPage : Page
                 // showing and reported it as this number's status. A number that
                 // was never actually submitted must not come back with an
                 // answer. Null is now treated as failure, exactly like ok:false.
+                // A null result (the script threw, or the browser was between
+                // navigations) is a failure, not a silent success: a number that
+                // was never submitted must not come back with an answer read off
+                // whatever page happened to be showing.
+                //
+                // The script now also reports alreadyShowing, for the very common
+                // case where the result for this number is already on screen. The
+                // e-Register replaces the search form with the result, so there is
+                // no number box to find at that point - which this used to report
+                // as "open the e-Status page and sign in first" while the answer
+                // sat in front of you.
                 if (submitted is not { } sr ||
                     !sr.TryGetProperty("ok", out var ok) ||
                     ok.ValueKind != JsonValueKind.True)
                 {
                     _bulkResults.Add(new FetchedStatusRow(number,
-                        "No application-number field was visible - load the e-Status page and sign in first.", false));
+                        "Couldn't find the application-number box, and the page isn't showing this number. " +
+                        "Open the e-Register search, sign in, and try again.", false));
                     continue;
                 }
 
-                // The e-status result loads by AJAX, so there is no navigation
-                // event to await.
-                //
-                // BUG FIX: this used to be a single flat 2.5s wait followed by
-                // one read. On a slow morning the Registry takes longer than
-                // that, and the read then happened against a page still showing
-                // the empty form - which is exactly the "status fetch returns
-                // nothing" symptom, and it looked like a selector problem rather
-                // than a timing one. The read is now retried until the page
-                // actually has fields on it, up to a real ceiling, so a slow
-                // response costs a second rather than the whole result.
-                await System.Threading.Tasks.Task.Delay(1200);
-
-                // SELECTOR TODO: table structure is still a guess for the
-                // current site - but the STRATEGY here (match each field by
-                // its visible label text, e.g. "Status", "Proprietor Name",
-                // rather than guessing an element id) is a validated pattern
-                // from Ritam-Guha/Trademark-scrapper, a 2019 Java scraper
-                // against IP India's older eRegister tool. Label text tends
-                // to survive a site redesign in a way internal ids don't,
-                // so this should need less retuning than an id-based guess
-                // even though the exact table layout has surely changed.
-                // Also attempts to find a document-download table using the
-                // same repo's pattern (a table of rows, each with a name,
-                // date, and a download link) - this is the piece that
-                // answers "fetch the examination report and other
-                // documents", which wasn't buildable without this reference.
-                // Read, and read again while the page is still empty. Eight
-                // attempts a second apart is a real ceiling rather than a
+                // The result loads by AJAX, so there is no navigation event to
+                // await. Read, and read again while the page is still empty:
+                // eight attempts a second apart is a real ceiling rather than a
                 // single optimistic guess at how fast the Registry answers.
-                var extracted = "{}";
+                //
+                // This now runs PortalScripts.ReadStatusResult - the same reader
+                // the guided run uses - instead of a second, divergent copy of
+                // the extraction logic that lived here. That copy was the source
+                // of the column bug: it looked for a cell whose text was the
+                // label and returned the next cell in the SAME ROW, which is a
+                // key/value assumption. The e-Register result is columnar, so
+                // the cell after "Class" is the "Filing Mode" header, and the
+                // class came back reading "Filing Mode". One reader, used
+                // everywhere, cannot drift like that again.
+                System.Text.Json.JsonElement? payload = null;
                 for (var attempt = 0; attempt < 8; attempt++)
                 {
-                    extracted = await Browser.CoreWebView2.ExecuteScriptAsync(BulkStatusScript);
-                    if (HasAnyField(extracted)) break;
+                    payload = await RunScriptAsync(PortalScripts.ReadStatusResult);
+                    if (HasReadableResult(payload)) break;
                     await System.Threading.Tasks.Task.Delay(1000);
                 }
 
-                var parsed = System.Text.Json.JsonDocument.Parse(
-                    System.Text.Json.JsonSerializer.Deserialize<string>(extracted) ?? "{}");
-
-                var root = parsed.RootElement;
-                var statusText = "";
-                if (root.TryGetProperty("fields", out var fieldsEl))
+                if (payload is not { } result || !HasReadableResult(payload))
                 {
-                    var parts = new List<string>();
-                    foreach (var prop in fieldsEl.EnumerateObject())
-                    {
-                        var val = prop.Value.GetString();
-                        if (!string.IsNullOrWhiteSpace(val)) parts.Add($"{prop.Name}: {val}");
-                    }
-                    statusText = string.Join(" | ", parts);
+                    _bulkResults.Add(new FetchedStatusRow(number,
+                        "The page never showed a result for this number. If a CAPTCHA is waiting, " +
+                        "solve it and press View, then run this again.", false));
+                    continue;
                 }
 
-                var docCount = root.TryGetProperty("docs", out var docsEl) ? docsEl.GetArrayLength() : 0;
-                if (docCount > 0) statusText += $" ({docCount} document link(s) found)";
+                var reading = ReadResult(result);
 
                 _bulkResults.Add(new FetchedStatusRow(
                     number,
-                    string.IsNullOrWhiteSpace(statusText) ? "Couldn't read any fields - selectors need adjusting for the current page." : statusText,
+                    reading.Summary,
                     !alreadyLinkedAppNumbers.Contains(number)));
+
+                // Write what was read back onto the matter, where one exists and
+                // the box is ticked. Reading the register and then not recording
+                // it is most of a job.
+                if (ApplyStatusCheck.IsChecked == true)
+                {
+                    var matter = App.Matters.GetAll().FirstOrDefault(m =>
+                        string.Equals(m.ApplicationNumber?.Trim(), number,
+                            StringComparison.OrdinalIgnoreCase));
+
+                    if (matter is not null && ApplyReadingToMatter(matter, reading))
+                        BulkStatusText.Text = $"{number}: docket updated from the register.";
+                }
             }
             catch (Exception ex)
             {
@@ -927,23 +815,16 @@ public sealed partial class IpIndiaPortalPage : Page
             }
 
             // --- read the status block ---
+            // Everything below comes from one reading now. The mark name in
+            // particular used to be found by scanning for a header containing
+            // "Trade Mark" but not "No" - a test that also matches "Trade Mark
+            // Type", so the mark could be named "WORD".
             var statusPayload = await RunScriptAsync(PortalScripts.ReadStatusResult);
-            var status = statusPayload is { } sp && sp.TryGetProperty("status", out var st)
-                ? st.GetString()
-                : null;
+            var reading = statusPayload is { } sp ? ReadResult(sp) : null;
+            var markName = reading?.MarkName ?? "";
 
-            var markName = "";
-            if (statusPayload is { } fp && fp.TryGetProperty("fields", out var fields) &&
-                fields.ValueKind == JsonValueKind.Object)
-            {
-                foreach (var field in fields.EnumerateObject())
-                    if (field.Name.Contains("Trade Mark", StringComparison.OrdinalIgnoreCase) &&
-                        !field.Name.Contains("No", StringComparison.OrdinalIgnoreCase))
-                        markName = field.Value.GetString() ?? "";
-            }
-
-            if (matter is not null && !string.IsNullOrWhiteSpace(status))
-                App.DocumentIngest.ApplyStatus(matter.Id, status, null);
+            if (matter is not null && reading is not null)
+                ApplyReadingToMatter(matter, reading);
 
             // --- both document panels ---
             var filed = 0;
@@ -955,115 +836,17 @@ public sealed partial class IpIndiaPortalPage : Page
             }
             else
             {
-                foreach (var panel in new[] { "documents", "correspondence" })
-                {
-                    BulkStatusText.Text = $"{number}: opening {panel}...";
-
-                    var opened = await RunScriptAsync(PortalScripts.OpenResultPanel, new { panel });
-                    if (opened is not { } op || !op.TryGetProperty("opened", out var wasOpen) ||
-                        wasOpen.ValueKind != JsonValueKind.True)
-                    {
-                        notes.Add($"{panel}: panel button not found.");
-                        continue;
-                    }
-
-                    await System.Threading.Tasks.Task.Delay(1400);
-
-                    var rowsPayload = await RunScriptAsync(PortalScripts.ReadOpenPanelRows);
-                    if (rowsPayload is not { } rp || !rp.TryGetProperty("rows", out var rows)) continue;
-
-                    foreach (var row in rows.EnumerateArray())
-                    {
-                        var url = row.TryGetProperty("url", out var u) ? u.GetString() : null;
-                        var description = row.TryGetProperty("description", out var d) ? d.GetString() ?? "" : "";
-                        var dateText = row.TryGetProperty("date", out var dt) ? dt.GetString() : null;
-                        var linkIndex = row.TryGetProperty("linkIndex", out var li) ? li.GetInt32() : -1;
-
-                        byte[]? content = null;
-                        string? contentType = null;
-
-                        if (!string.IsNullOrWhiteSpace(url))
-                        {
-                            // Direct URL: fetch it inside the session.
-                            var fetched = await RunScriptAsync(PortalScripts.FetchFileAsBase64, new { url });
-                            if (fetched is { } fpay &&
-                                fpay.TryGetProperty("ok", out var ok) && ok.ValueKind == JsonValueKind.True)
-                            {
-                                var base64 = fpay.TryGetProperty("data", out var dataEl) ? dataEl.GetString() : null;
-                                if (!string.IsNullOrWhiteSpace(base64))
-                                {
-                                    content = Convert.FromBase64String(base64);
-                                    contentType = fpay.TryGetProperty("contentType", out var ct) ? ct.GetString() : null;
-                                }
-                            }
-                            else
-                            {
-                                var reason = fetched is { } fr && fr.TryGetProperty("reason", out var rr)
-                                    ? rr.GetString() : "unknown";
-                                notes.Add($"{description}: {reason}");
-                            }
-                        }
-
-                        // No URL - the link is a postback. Rows like this used to
-                        // be skipped outright, which is why documents never
-                        // arrived. Click it and catch the download instead.
-                        if (content is null && linkIndex >= 0)
-                        {
-                            var temp = System.IO.Path.Combine(
-                                System.IO.Path.GetTempPath(),
-                                $"ipd_{Guid.NewGuid():N}.pdf");
-
-                            var captured = await ClickAndCaptureAsync(
-                                linkIndex, temp, TimeSpan.FromMinutes(2));
-
-                            if (captured is not null && System.IO.File.Exists(captured))
-                            {
-                                try
-                                {
-                                    content = await System.IO.File.ReadAllBytesAsync(captured);
-                                    contentType = "application/pdf";
-                                }
-                                finally
-                                {
-                                    try { System.IO.File.Delete(captured); } catch { }
-                                }
-                            }
-                            else
-                            {
-                                notes.Add($"{description}: no URL and clicking produced no download.");
-                            }
-                        }
-
-                        if (content is null) continue;
-
-                        var result = App.DocumentIngest.Ingest(
-                            matter.Id, content,
-                            description, panel, contentType, ParsePortalDate(dateText));
-
-                        if (result.Saved)
-                        {
-                            filed++;
-
-                            // OCR the freshly filed document so its text is
-                            // searchable. Deliberately after the file is safely
-                            // on disk - a failure here loses text, not the
-                            // document.
-                            if (result.DocumentId is { } docId)
-                                _ = App.DocumentIngest.ExtractTextAsync(docId);
-                        }
-                        else notes.Add($"{description}: {result.Reason}");
-                    }
-
-                    // Close the modal so the next panel button is clickable.
-                    await RunScriptAsync(PortalScripts.OpenResultPanel, new { panel = "close" });
-                    await System.Threading.Tasks.Task.Delay(600);
-                }
+                var panelRun = await FileDocumentsFromPanelsAsync(matter, number);
+                filed = panelRun.Filed;
+                notes.AddRange(panelRun.Notes);
             }
 
             filedTotal += filed;
 
             var label = string.IsNullOrWhiteSpace(markName) ? number : $"{number} — {markName}";
-            var summary = $"Status: {status ?? "not read"}. {filed} document(s) filed.";
+            var summary = reading is null
+                ? $"No result could be read. {filed} document(s) filed."
+                : $"{reading.Summary}  —  {filed} document(s) filed.";
             if (notes.Count > 0) summary += " " + string.Join(" ", notes.Take(3));
 
             _bulkResults.Add(new FetchedStatusRow(label, summary, false));
@@ -1149,76 +932,55 @@ public sealed partial class IpIndiaPortalPage : Page
                     ok.ValueKind != JsonValueKind.True)
                 {
                     _bulkResults.Add(new FetchedStatusRow(number,
-                        "No application-number field on this page - open the e-Status page and sign in first.", false));
+                        "Couldn't find the application-number box, and the page isn't showing this number. " +
+                        "Open the e-Register search, sign in, and try again.", false));
                     continue;
                 }
 
                 // The result loads by AJAX, so there is no navigation event to
-                // await. This delay is a heuristic, not a guarantee.
-                await System.Threading.Tasks.Task.Delay(2500);
+                // await. Wait for the reader to actually see a result rather
+                // than guessing at a fixed delay.
+                System.Text.Json.JsonElement? statusPayload = null;
+                for (var attempt = 0; attempt < 8; attempt++)
+                {
+                    statusPayload = await RunScriptAsync(PortalScripts.ReadStatusResult);
+                    if (HasReadableResult(statusPayload)) break;
+                    await System.Threading.Tasks.Task.Delay(1000);
+                }
 
-                var listed = await RunScriptAsync(PortalScripts.ExtractDocumentLinks);
-                if (listed is not { } docPayload ||
-                    !docPayload.TryGetProperty("documents", out var docsEl) ||
-                    docsEl.GetArrayLength() == 0)
+                if (statusPayload is not { } shown || !HasReadableResult(statusPayload))
                 {
                     _bulkResults.Add(new FetchedStatusRow(number,
-                        "Status page loaded but listed no downloadable documents.", false));
+                        "The page never showed a result for this number - if a CAPTCHA is waiting, " +
+                        "solve it and press View, then run this again.", false));
                     continue;
                 }
 
-                var saved = 0;
-                var skipped = 0;
-                var notes = new List<string>();
+                var reading = ReadResult(shown);
 
-                foreach (var docEl in docsEl.EnumerateArray())
-                {
-                    var url = docEl.TryGetProperty("url", out var u) ? u.GetString() : null;
-                    if (string.IsNullOrWhiteSpace(url)) continue;
+                // WHY THIS NO LONGER USES ExtractDocumentLinks.
+                //
+                // That script scans the page for anchors pointing at files. On
+                // the e-Register result page there are none: the papers live
+                // behind four buttons - PR Details, Reminders, Correspondence &
+                // Notices, Uploaded Documents - each of which opens a modal, and
+                // the View links inside those modals are ASP.NET postbacks with
+                // no URL at all. So the scan found nothing and the run reported
+                // "listed no downloadable documents", which read as "this mark
+                // has no papers" when it meant "I looked in the wrong place".
+                //
+                // The guided run already walked those panels correctly. Both
+                // paths now call the same method, so neither can drift from the
+                // other again - which is exactly how this divergence started.
+                var panelRun = await FileDocumentsFromPanelsAsync(matter, number);
 
-                    var label = docEl.TryGetProperty("label", out var l) ? l.GetString() ?? "Document" : "Document";
-                    var context = docEl.TryGetProperty("context", out var c) ? c.GetString() : null;
-                    var dateText = docEl.TryGetProperty("date", out var d) ? d.GetString() : null;
+                var saved = panelRun.Filed;
+                var skipped = panelRun.Skipped;
+                var notes = new List<string>(panelRun.Notes);
+                sessionLost = panelRun.SessionLost;
 
-                    BulkStatusText.Text = $"{number}: fetching '{label}'...";
-
-                    var fetched = await RunScriptAsync(PortalScripts.FetchFileAsBase64, new { url });
-                    if (fetched is not { } filePayload) { skipped++; continue; }
-
-                    if (!filePayload.TryGetProperty("ok", out var fileOk) || fileOk.ValueKind != JsonValueKind.True)
-                    {
-                        var reason = filePayload.TryGetProperty("reason", out var r) ? r.GetString() : "unknown";
-                        if (reason == "session-expired")
-                        {
-                            sessionLost = true;
-                            notes.Add("Session expired.");
-                            break;
-                        }
-                        skipped++;
-                        notes.Add($"{label}: {reason}");
-                        continue;
-                    }
-
-                    var base64 = filePayload.TryGetProperty("data", out var dataEl) ? dataEl.GetString() : null;
-                    if (string.IsNullOrWhiteSpace(base64)) { skipped++; continue; }
-
-                    var contentType = filePayload.TryGetProperty("contentType", out var ct) ? ct.GetString() : null;
-
-                    var result = App.DocumentIngest.Ingest(
-                        matter.Id, Convert.FromBase64String(base64),
-                        label, context, contentType, ParsePortalDate(dateText));
-
-                    if (result.Saved) saved++;
-                    else { skipped++; notes.Add($"{label}: {result.Reason}"); }
-                }
-
-                // Status, where the page exposed it and you asked for it.
-                if (!sessionLost && ApplyStatusCheck.IsChecked == true)
-                {
-                    var status = await ReadStatusFieldAsync();
-                    if (status is not null && App.DocumentIngest.ApplyStatus(matter.Id, status, null))
-                        notes.Add($"Status updated to '{status}'.");
-                }
+                if (ApplyStatusCheck.IsChecked == true && ApplyReadingToMatter(matter, reading))
+                    notes.Add($"Docket updated from the register (status '{reading.Status}').");
 
                 savedTotal += saved;
                 skippedTotal += skipped;
@@ -1226,7 +988,8 @@ public sealed partial class IpIndiaPortalPage : Page
                 var summary = $"{saved} document(s) filed, {skipped} skipped.";
                 if (notes.Count > 0) summary += " " + string.Join(" ", notes.Take(4));
 
-                _bulkResults.Add(new FetchedStatusRow($"{number} — {matter.Title}", summary, false));
+                var shownName = string.IsNullOrWhiteSpace(reading.MarkName) ? matter.Title : reading.MarkName;
+                _bulkResults.Add(new FetchedStatusRow($"{number} — {shownName}", summary, false));
             }
             catch (Exception ex)
             {
@@ -1244,34 +1007,339 @@ public sealed partial class IpIndiaPortalPage : Page
         BulkStatusText.Text = final;
     }
 
-    /// <summary>
-    /// Reads the status line off the currently displayed result, reusing the
-    /// label-matching approach rather than a fixed selector.
-    /// </summary>
-    private async System.Threading.Tasks.Task<string?> ReadStatusFieldAsync()
+    /// <summary>One canonical reading of an e-Register result page.</summary>
+    private sealed record PortalReading(
+        string? Status,
+        string? SubStatus,
+        string? AsOn,
+        string? TrademarkNo,
+        string? ApplicationDate,
+        string? NiceClass,
+        string? FilingMode,
+        string? MarkName,
+        string? TmType,
+        string? Proprietor,
+        string? ProprietorName,
+        string? Publication,
+        string? ValidUpto,
+        List<string> Panels)
     {
-        var result = await RunScriptAsync(PortalScripts.ExtractTables);
-        if (result is not { } payload ||
-            !payload.TryGetProperty("tables", out var tables)) return null;
-
-        foreach (var table in tables.EnumerateArray())
+        /// <summary>What the results list shows for this number.</summary>
+        public string Summary
         {
-            if (!table.TryGetProperty("headers", out var headers) ||
-                !table.TryGetProperty("rows", out var rows)) continue;
-
-            var headerList = headers.EnumerateArray().Select(h => h.GetString() ?? "").ToList();
-            var statusIndex = headerList.FindIndex(h => h.Contains("status", StringComparison.OrdinalIgnoreCase));
-            if (statusIndex < 0) continue;
-
-            foreach (var row in rows.EnumerateArray())
+            get
             {
-                var cells = row.EnumerateArray().Select(c => c.GetString() ?? "").ToList();
-                if (statusIndex < cells.Count && !string.IsNullOrWhiteSpace(cells[statusIndex]))
-                    return cells[statusIndex].Trim();
+                var parts = new List<string>();
+                void Add(string label, string? value)
+                {
+                    if (!string.IsNullOrWhiteSpace(value)) parts.Add($"{label}: {value}");
+                }
+
+                Add("Status", Status);
+                if (!string.IsNullOrWhiteSpace(SubStatus) &&
+                    !string.Equals(SubStatus, "Not Applicable", StringComparison.OrdinalIgnoreCase))
+                    Add("Sub status", SubStatus);
+                Add("Mark", MarkName);
+                Add("Class", NiceClass);
+                Add("Filed", ApplicationDate);
+                Add("Type", TmType);
+                Add("Filing mode", FilingMode);
+                Add("Proprietor", ProprietorName ?? Proprietor);
+                if (!string.IsNullOrWhiteSpace(ProprietorName)) Add("Use claim", Proprietor);
+                Add("Valid upto", ValidUpto);
+                Add("As on", AsOn);
+
+                if (parts.Count == 0) return "The result was on screen but no fields could be read from it.";
+
+                var summary = string.Join(" | ", parts);
+                if (Panels.Count > 0) summary += $"  ({Panels.Count} document panel(s): {string.Join(", ", Panels)})";
+                return summary;
             }
         }
+    }
 
-        return null;
+    private static string? Text(System.Text.Json.JsonElement parent, string property)
+    {
+        if (!parent.TryGetProperty(property, out var value) ||
+            value.ValueKind != JsonValueKind.String) return null;
+        var text = value.GetString();
+        return string.IsNullOrWhiteSpace(text) ? null : text.Trim();
+    }
+
+    /// <summary>
+    /// True once the page is actually showing a result. Used to decide whether
+    /// to keep waiting - a page still rendering the empty search form reads as
+    /// "no fields", which is a reason to wait, not a reason to report a miss.
+    /// </summary>
+    private static bool HasReadableResult(System.Text.Json.JsonElement? payload)
+    {
+        if (payload is not { } root) return false;
+
+        if (!string.IsNullOrWhiteSpace(Text(root, "status"))) return true;
+
+        return root.TryGetProperty("named", out var named) &&
+               named.ValueKind == JsonValueKind.Object &&
+               (!string.IsNullOrWhiteSpace(Text(named, "trademarkNo")) ||
+                !string.IsNullOrWhiteSpace(Text(named, "markName")));
+    }
+
+    /// <summary>Turns the reader's JSON into the typed reading everything else uses.</summary>
+    private static PortalReading ReadResult(System.Text.Json.JsonElement root)
+    {
+        var named = root.TryGetProperty("named", out var n) && n.ValueKind == JsonValueKind.Object
+            ? n
+            : default;
+
+        var panels = new List<string>();
+        if (root.TryGetProperty("panels", out var panelsEl) && panelsEl.ValueKind == JsonValueKind.Array)
+            foreach (var panel in panelsEl.EnumerateArray())
+                if (panel.GetString() is { Length: > 0 } label) panels.Add(label);
+
+        string? FromNamed(string key) =>
+            named.ValueKind == JsonValueKind.Object ? Text(named, key) : null;
+
+        return new PortalReading(
+            Text(root, "status"),
+            Text(root, "subStatus"),
+            Text(root, "asOn"),
+            FromNamed("trademarkNo"),
+            FromNamed("applicationDate"),
+            FromNamed("niceClass"),
+            FromNamed("filingMode"),
+            FromNamed("markName"),
+            FromNamed("tmType"),
+            FromNamed("userDetail"),
+            FromNamed("proprietorName"),
+            FromNamed("publication"),
+            FromNamed("validUpto"),
+            panels);
+    }
+
+    /// <summary>
+    /// Writes a reading onto a matter and returns whether anything changed.
+    ///
+    /// Empty fields are filled; fields that already hold something are LEFT
+    /// ALONE. A register read is good evidence, but it is not better than what
+    /// a person typed in deliberately, and silently overwriting a corrected
+    /// proprietor name or a hand-set class with whatever the portal rendered
+    /// today is how a docket stops being trusted. Status is the exception - it
+    /// goes through DocumentIngest.ApplyStatus, which is the existing audited
+    /// path for exactly this.
+    /// </summary>
+    private static bool ApplyReadingToMatter(
+        IPDocketing.Core.Models.Matter matter, PortalReading reading)
+    {
+        var changed = false;
+
+        if (!string.IsNullOrWhiteSpace(reading.Status) &&
+            App.DocumentIngest.ApplyStatus(matter.Id, reading.Status, null))
+            changed = true;
+
+        if (string.IsNullOrWhiteSpace(matter.NiceClass) &&
+            !string.IsNullOrWhiteSpace(reading.NiceClass) &&
+            int.TryParse(reading.NiceClass.Trim(), out var niceClass) &&
+            niceClass is >= 1 and <= 45)
+        {
+            matter.NiceClass = niceClass.ToString();
+            changed = true;
+        }
+
+        // The register shows the owner in "Proprietor Name" and the use claim in
+        // "User Detail". Writing the latter into ProprietorName gave matters a
+        // proprietor of "Proposed to be used".
+        if (string.IsNullOrWhiteSpace(matter.ProprietorName) &&
+            !string.IsNullOrWhiteSpace(reading.ProprietorName))
+        {
+            matter.ProprietorName = reading.ProprietorName;
+            changed = true;
+        }
+
+        if (matter.FilingDate is null && ParsePortalDate(reading.ApplicationDate) is { } filed)
+        {
+            matter.FilingDate = filed;
+            changed = true;
+        }
+
+        // The title is replaced only where it is still the placeholder written
+        // by "Add to list", never where someone has named the matter themselves.
+        if (!string.IsNullOrWhiteSpace(reading.MarkName) &&
+            (string.IsNullOrWhiteSpace(matter.Title) ||
+             matter.Title.StartsWith("Imported from e-Status", StringComparison.OrdinalIgnoreCase)))
+        {
+            matter.Title = reading.MarkName;
+            changed = true;
+        }
+
+        if (changed)
+        {
+            try { App.Database.SaveChanges(); }
+            catch { return false; }
+        }
+
+        return changed;
+    }
+
+    /// <summary>Outcome of walking the result page's document panels.</summary>
+    private sealed record PanelFileResult(int Filed, int Skipped, bool SessionLost, List<string> Notes);
+
+    /// <summary>
+    /// Opens every document panel on the current result and files what it finds
+    /// against <paramref name="matter"/>.
+    ///
+    /// THE ONE COPY. Bulk document fetch used to scan the page for anchors
+    /// pointing at files (PortalScripts.ExtractDocumentLinks) while the guided
+    /// run walked these panels. The e-Register has no such anchors - the papers
+    /// sit behind four modal buttons whose View links are postbacks with no URL
+    /// - so the bulk path found nothing and said the mark had no documents.
+    /// Both callers now share this method.
+    ///
+    /// All four panels are visited, not two. "PR Details" and "Reminders" were
+    /// unreachable before, so anything filed under them was invisible to the app.
+    /// </summary>
+    private async System.Threading.Tasks.Task<PanelFileResult> FileDocumentsFromPanelsAsync(
+        IPDocketing.Core.Models.Matter matter, string number)
+    {
+        var filed = 0;
+        var skipped = 0;
+        var sessionLost = false;
+        var notes = new List<string>();
+
+        foreach (var panel in new[] { "documents", "correspondence", "prdetails", "reminders" })
+        {
+            if (sessionLost) break;
+
+            BulkStatusText.Text = $"{number}: opening {panel}...";
+
+            var opened = await RunScriptAsync(PortalScripts.OpenResultPanel, new { panel });
+            if (opened is not { } op || !op.TryGetProperty("opened", out var wasOpen) ||
+                wasOpen.ValueKind != JsonValueKind.True)
+            {
+                // Not every mark has every panel, so this is information rather
+                // than an error - but it is still worth saying, because "this
+                // panel isn't on the page" and "this panel was empty" are
+                // different facts about the mark.
+                notes.Add($"{panel}: no such panel on this result.");
+                continue;
+            }
+
+            await System.Threading.Tasks.Task.Delay(1400);
+
+            var rowsPayload = await RunScriptAsync(PortalScripts.ReadOpenPanelRows);
+            if (rowsPayload is { } rp && rp.TryGetProperty("rows", out var rows) &&
+                rows.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var row in rows.EnumerateArray())
+                {
+                    var url = Text(row, "url");
+                    var description = Text(row, "description") ?? "Document";
+                    var dateText = Text(row, "date");
+
+                    // Two examination reports can be issued on the same day -
+                    // your own record shows 23189976 and 23189978, both dated
+                    // 09/07/2026, both titled "EXAMINATION REPORT". Filed under
+                    // description and date alone they are indistinguishable, and
+                    // the second looks like a duplicate of the first. The
+                    // correspondence and despatch numbers are what tell them
+                    // apart, so they go into the description.
+                    var corresNo = Text(row, "corresNo");
+                    var despatchNo = Text(row, "despatchNo");
+                    var despatchDate = Text(row, "despatchDate");
+
+                    var qualifiers = new List<string>();
+                    if (!string.IsNullOrWhiteSpace(corresNo)) qualifiers.Add($"Corres. {corresNo}");
+                    if (!string.IsNullOrWhiteSpace(despatchNo)) qualifiers.Add($"Despatch {despatchNo}");
+                    if (!string.IsNullOrWhiteSpace(despatchDate)) qualifiers.Add($"despatched {despatchDate}");
+                    if (qualifiers.Count > 0) description += $" [{string.Join(", ", qualifiers)}]";
+                    var linkIndex = row.TryGetProperty("linkIndex", out var li) &&
+                                    li.ValueKind == JsonValueKind.Number ? li.GetInt32() : -1;
+
+                    byte[]? content = null;
+                    string? contentType = null;
+
+                    if (!string.IsNullOrWhiteSpace(url))
+                    {
+                        var fetched = await RunScriptAsync(PortalScripts.FetchFileAsBase64, new { url });
+                        if (fetched is { } fpay &&
+                            fpay.TryGetProperty("ok", out var ok) && ok.ValueKind == JsonValueKind.True)
+                        {
+                            var base64 = Text(fpay, "data");
+                            if (!string.IsNullOrWhiteSpace(base64))
+                            {
+                                content = Convert.FromBase64String(base64);
+                                contentType = Text(fpay, "contentType");
+                            }
+                        }
+                        else
+                        {
+                            var reason = fetched is { } fr ? Text(fr, "reason") ?? "unknown" : "unknown";
+                            if (reason == "session-expired")
+                            {
+                                sessionLost = true;
+                                notes.Add("Session expired.");
+                                break;
+                            }
+                            notes.Add($"{description}: {reason}");
+                        }
+                    }
+
+                    // No URL - the View link is a postback, which is the normal
+                    // case here. Click it and catch the download, as a person
+                    // would. Rows like this used to be dropped for having an
+                    // empty url, which is most of why documents never arrived.
+                    if (content is null && linkIndex >= 0)
+                    {
+                        var temp = System.IO.Path.Combine(
+                            System.IO.Path.GetTempPath(), $"ipd_{Guid.NewGuid():N}.pdf");
+
+                        var captured = await ClickAndCaptureAsync(linkIndex, temp, TimeSpan.FromMinutes(2));
+
+                        if (captured is not null && System.IO.File.Exists(captured))
+                        {
+                            try
+                            {
+                                content = await System.IO.File.ReadAllBytesAsync(captured);
+                                contentType = "application/pdf";
+                            }
+                            finally
+                            {
+                                try { System.IO.File.Delete(captured); } catch { }
+                            }
+                        }
+                        else
+                        {
+                            notes.Add($"{description}: no URL, and clicking produced no download.");
+                        }
+                    }
+
+                    if (content is null) { skipped++; continue; }
+
+                    var result = App.DocumentIngest.Ingest(
+                        matter.Id, content, description, panel, contentType, ParsePortalDate(dateText));
+
+                    if (result.Saved)
+                    {
+                        filed++;
+
+                        // OCR the freshly filed document so its text is
+                        // searchable. Deliberately after the file is safely on
+                        // disk - a failure here loses text, not the document.
+                        if (result.DocumentId is { } docId)
+                            _ = App.DocumentIngest.ExtractTextAsync(docId);
+                    }
+                    else
+                    {
+                        skipped++;
+                        notes.Add($"{description}: {result.Reason}");
+                    }
+                }
+            }
+
+            // Close the modal so the next panel button is clickable again.
+            await RunScriptAsync(PortalScripts.OpenResultPanel, new { panel = "close" });
+            await System.Threading.Tasks.Task.Delay(600);
+        }
+
+        return new PanelFileResult(filed, skipped, sessionLost, notes);
     }
 
     /// <summary>Day-first, as the portal writes them.</summary>
@@ -1306,34 +1374,6 @@ public sealed partial class IpIndiaPortalPage : Page
                 return parsed.Year < 1900 ? null : parsed.Date;
 
         return null;
-    }
-
-    /// <summary>
-    /// True when the extraction script came back with at least one non-empty
-    /// field - i.e. the result really is on the page and worth reading.
-    /// </summary>
-    private static bool HasAnyField(string? rawScriptResult)
-    {
-        if (string.IsNullOrWhiteSpace(rawScriptResult)) return false;
-
-        try
-        {
-            var inner = JsonSerializer.Deserialize<string>(rawScriptResult);
-            if (string.IsNullOrWhiteSpace(inner)) return false;
-
-            using var document = JsonDocument.Parse(inner);
-            if (!document.RootElement.TryGetProperty("fields", out var fields) ||
-                fields.ValueKind != JsonValueKind.Object) return false;
-
-            foreach (var field in fields.EnumerateObject())
-                if (!string.IsNullOrWhiteSpace(field.Value.GetString())) return true;
-        }
-        catch
-        {
-            // Malformed output is not a result - keep waiting.
-        }
-
-        return false;
     }
 
     private async void CopyBulkReport_Click(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)

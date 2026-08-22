@@ -94,28 +94,54 @@
             <ListView x:Name="IssueList" Background="Transparent" SelectionMode="Single" MaxHeight="220">
                 <ListView.ItemTemplate>
                     <DataTemplate>
-                        <Grid Padding="12,13" ColumnSpacing="18">
+                        <Grid Padding="12,13" ColumnSpacing="14">
                             <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="140" />
-                                <ColumnDefinition Width="150" />
-                                <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="110" />
+                                <ColumnDefinition Width="130" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="150" />
                             </Grid.ColumnDefinitions>
                             <TextBlock Text="{Binding IssueNumber}" FontWeight="SemiBold"
                                        Foreground="{ThemeResource TextPrimaryBrush}" VerticalAlignment="Center" />
                             <TextBlock Grid.Column="1" Text="{Binding PublicationDate}" VerticalAlignment="Center"
                                        Foreground="{ThemeResource TextSecondaryBrush}" />
-                            <HyperlinkButton Grid.Column="2" Content="{Binding Url}" NavigateUri="{Binding Url}"
-                                             VerticalAlignment="Center" />
-                            <!-- Actionable now. JournalService.MarkReviewed existed
-                                 but nothing called it, so every issue sat on
-                                 "Pending review" forever with no way to clear it. -->
-                            <Button Grid.Column="3" Style="{StaticResource MergedGlassMiniButtonStyle}"
+
+                            <!-- Was a HyperlinkButton bound straight to Url. Most
+                                 issues have no URL at all (the listing uses
+                                 postbacks), and NavigateUri does not accept an
+                                 empty string - so that binding was a latent
+                                 throw on exactly the rows you have. Plain text
+                                 plus an explicit Open button, enabled only when
+                                 there is something to open. -->
+                            <TextBlock Grid.Column="2" Text="{Binding LinkLabel}" VerticalAlignment="Center"
+                                       TextTrimming="CharacterEllipsis" FontSize="12"
+                                       Foreground="{ThemeResource TextTertiaryBrush}" />
+
+                            <Button Grid.Column="3" Content="Open" FontSize="11"
+                                    Style="{StaticResource MergedGlassMiniButtonStyle}"
+                                    VerticalAlignment="Center"
+                                    IsEnabled="{Binding HasUrl}"
+                                    Click="RowOpenUrl_Click" Tag="{Binding Id}"
+                                    ToolTipService.ToolTip="Open the journal PDF in your browser" />
+
+                            <Button Grid.Column="4" Content="Get PDF" FontSize="11"
+                                    Style="{StaticResource MergedGlassMiniButtonStyle}"
+                                    VerticalAlignment="Center"
+                                    Click="RowGetPdf_Click" Tag="{Binding Id}"
+                                    ToolTipService.ToolTip="Fetch this issue's PDFs through the hidden browser" />
+
+                            <!-- The badge is now the pipeline's real state and is
+                                 clickable: it opens what the status means and the
+                                 error behind it, and offers the reviewed toggle
+                                 that used to be its only function. -->
+                            <Button Grid.Column="5" Style="{StaticResource MergedGlassMiniButtonStyle}"
                                     HorizontalAlignment="Left" VerticalAlignment="Center"
-                                    Click="ToggleReviewed_Click" Tag="{Binding Id}"
-                                    ToolTipService.ToolTip="Toggle between reviewed and pending">
-                                <TextBlock Text="{Binding ReviewedLabel}" FontSize="11" FontWeight="SemiBold"
-                                           Foreground="{Binding ReviewedBrush}" />
+                                    Click="IssueStatus_Click" Tag="{Binding Id}"
+                                    ToolTipService.ToolTip="{Binding StatusDetail}">
+                                <TextBlock Text="{Binding StatusLabel}" FontSize="11" FontWeight="SemiBold"
+                                           Foreground="{Binding StatusBrush}" />
                             </Button>
                         </Grid>
                     </DataTemplate>

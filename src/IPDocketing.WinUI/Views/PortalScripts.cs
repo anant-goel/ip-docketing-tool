@@ -607,9 +607,15 @@ internal static class PortalScripts
                 return JSON.stringify({ opened: false, closed: closed, panel: 'close' });
             }
 
-            var wanted = payload.panel === 'correspondence'
-                ? ['correspondence', 'notices']
-                : ['uploaded document', 'uploaded documents'];
+            // All four panels the result page offers, not just two. The page
+            // shows "PR Details", "Reminders", "Correspondence & Notices" and
+            // "Uploaded Documents"; only the last two were reachable, so a mark
+            // whose papers sit under the other two reported nothing to fetch.
+            var wanted =
+                payload.panel === 'correspondence' ? ['correspondence', 'notices'] :
+                payload.panel === 'prdetails'      ? ['pr details', 'pr detail'] :
+                payload.panel === 'reminders'      ? ['reminder'] :
+                                                     ['uploaded document', 'uploaded documents'];
 
             var opened = false;
             ipdDocuments().forEach(function (doc) {
@@ -674,8 +680,23 @@ internal static class PortalScripts
                         return -1;
                     }
 
+                    // CONFIRMED COLUMN SHAPES (live modals):
+                    //   Uploaded Documents      S.No | Document description | Document Date | View
+                    //   Correspondence & Notices S.No | Corres. No | Corres. Date | Subject |
+                    //                            Despatch No | Despatch Date | View
+                    //
+                    // Only description and date were being captured. The
+                    // correspondence number, despatch number and despatch date
+                    // were read off the page and then thrown away, so two
+                    // examination reports issued on the same day arrived
+                    // indistinguishable - which is precisely the pair you need
+                    // to tell apart.
                     var descIndex = indexOfHeader(['document description', 'subject', 'description']);
-                    var dateIndex = indexOfHeader(['document date', 'corres. date', 'corres date', 'despatch date', 'date']);
+                    var dateIndex = indexOfHeader(['document date', 'corres. date', 'corres date', 'date']);
+                    var corresNoIndex = indexOfHeader(['corres. no', 'corres no', 'correspondence no']);
+                    var despatchNoIndex = indexOfHeader(['despatch no', 'dispatch no']);
+                    var despatchDateIndex = indexOfHeader(['despatch date', 'dispatch date']);
+                    var serialIndex = indexOfHeader(['s.no', 'sr.no', 'sno']);
                     if (descIndex < 0) return;
 
                     for (var r = 1; r < trs.length; r++) {
@@ -693,9 +714,17 @@ internal static class PortalScripts
                         // be actioned by clicking it. Previously such rows were
                         // dropped for having an empty url - the same defect that
                         // hid the Journal icon links.
+                        function at(index) {
+                            return (index >= 0 && index < cells.length) ? cellText(cells[index]) : '';
+                        }
+
                         rows.push({
                             description: descIndex < cells.length ? cellText(cells[descIndex]) : '',
-                            date: (dateIndex >= 0 && dateIndex < cells.length) ? cellText(cells[dateIndex]) : '',
+                            date: at(dateIndex),
+                            serial: at(serialIndex),
+                            corresNo: at(corresNoIndex),
+                            despatchNo: at(despatchNoIndex),
+                            despatchDate: at(despatchDateIndex),
                             url: (href && href.indexOf('javascript:') !== 0) ? href : '',
                             onclick: onclick.slice(0, 300),
                             linkIndex: allPanelLinks.indexOf(link),
@@ -746,34 +775,30 @@ internal static class PortalScripts
     public const string ReadStatusResult = Helpers + """
 
         (function () {
-            var out = { status: '', subStatus: '', asOn: '', fields: {} };
+            var out = {
+                status: '', subStatus: '', asOn: '',
+                fields: {}, named: {}, panels: [], rowCount: 0
+            };
+
+            function norm(s) {
+                return (s || '').replace(/\u00a0/g, ' ').replace(/\s+/g, ' ').trim();
+            }
 
             var body = '';
             ipdDocuments().forEach(function (doc) {
                 body += ' ' + ((doc.body && doc.body.innerText) || '');
             });
-            body = body.replace(/\s+/g, ' ');
+            body = norm(body);
 
-            // BUG FIX 1 - the value came back with the NEXT label glued on.
-            // The old stop-list was /status\s*:|sub status\s*:|.../ and regex
-            // alternation is first-match-wins, so "Accepted & Advertised Sub
-            // Status: Registered" was cut at "Status:" inside "Sub Status:",
-            // leaving the status reading "Accepted & Advertised Sub". Longer
-            // labels are now listed FIRST so they win the alternation.
-            //
-            // BUG FIX 2 - the label was matched with indexOf on a lowercased
-            // body, so looking for 'status:' found the "Status:" inside "Sub
-            // Status:" whenever the sub-status was printed first, and the two
-            // fields swapped. Matching is now a regex anchored on a word
-            // boundary, and the spacing around the colon is no longer required
-            // to be exactly what one screenshot happened to show ("As on Date :"
-            // vs "As on Date:" both match).
+            // --- the labelled lines above the table --------------------------
+            // Longer labels are listed FIRST in the stop-list: regex alternation
+            // is first-match-wins, so with "status" ahead of "sub status" a value
+            // was cut inside "Sub Status:" and came back as "Objected Sub".
             var STOP = /(?:sub\s*status|as\s*on\s*date|trade\s*mark\s*no|application\s*no|class|proprietor|status)\s*:/i;
 
-            // rejectPrefix, where given, discards a match whose preceding text
-            // ends with it - that is how a bare "Status:" avoids matching the
-            // "Status:" inside "Sub Status:" without relying on lookbehind
-            // being available in every engine this might run in.
+            // rejectPrefix discards a match whose preceding text ends with it -
+            // how a bare "Status:" avoids matching the one inside "Sub Status:"
+            // without relying on lookbehind support.
             function after(labelPattern, rejectPrefix) {
                 var re = new RegExp('(?:^|[^a-z])(' + labelPattern + ')\\s*:', 'gi');
                 var m;
@@ -797,23 +822,142 @@ internal static class PortalScripts
             out.subStatus = after('sub\\s*status', null);
             out.status = after('status', 'sub ');
 
-            // The result table itself: one row of mark details.
+            // --- the Matching Trade Marks table ------------------------------
+            //
+            // THE COLUMN BUG THIS REPLACES.
+            //
+            // The old reader took trs[0] as headers and trs[1] as the data row
+            // and zipped them by index. Separately, the bulk-fetch path used a
+            // findByLabel() that located a cell whose text was the label and
+            // returned THE NEXT CELL IN THE SAME ROW.
+            //
+            // That second assumption is a key/value layout - "Status: Objected"
+            // side by side. This table is not that shape. It is columnar:
+            //
+            //   Trade Mark No. | Date of Application | Class | Filing Mode | ...
+            //   7050751        | 08/06/2025          | 25    | e-Filing    | ...
+            //
+            // so the cell after the "Class" header is the "Filing Mode" HEADER,
+            // and asking for the class returned the string "Filing Mode". Every
+            // field was one column to the right of the truth.
+            //
+            // This reader handles the columnar shape properly: it finds the
+            // header row, finds the first real data row beneath it, and pairs
+            // them by COLUMN INDEX. Values are then addressed by header name, so
+            // a column appearing or moving cannot silently shift a field.
+
+            function headerScore(texts) {
+                var joined = texts.join(' | ').toLowerCase();
+                var score = 0;
+                if (joined.indexOf('trade mark') !== -1) score += 3;
+                if (joined.indexOf('class') !== -1) score += 2;
+                if (joined.indexOf('application') !== -1) score += 2;
+                if (joined.indexOf('filing mode') !== -1) score += 2;
+                if (joined.indexOf('valid') !== -1) score += 1;
+                return score;
+            }
+
+            var best = null, bestScore = 0;
+
             ipdDocuments().forEach(function (doc) {
                 doc.querySelectorAll('table').forEach(function (table) {
                     if (!ipdVisible(table)) return;
-                    var trs = table.querySelectorAll('tr');
+
+                    // Rows belonging to THIS table only - a nested table's rows
+                    // would otherwise be read as if they were this one's.
+                    var trs = Array.prototype.slice.call(table.querySelectorAll('tr'))
+                        .filter(function (tr) { return tr.closest('table') === table; });
                     if (trs.length < 2) return;
 
-                    var headers = Array.prototype.map.call(
-                        trs[0].querySelectorAll('th, td'),
-                        function (c) { return (c.innerText || '').replace(/\s+/g, ' ').trim(); });
+                    var headerTexts = Array.prototype.map.call(
+                        trs[0].querySelectorAll('th, td'), function (c) { return norm(c.innerText); });
+                    if (headerTexts.length < 3) return;
 
-                    if (headers.join(' ').toLowerCase().indexOf('trade mark') === -1) return;
+                    var score = headerScore(headerTexts);
+                    if (score <= bestScore) return;
 
-                    var cells = trs[1].querySelectorAll('td');
-                    for (var i = 0; i < headers.length && i < cells.length; i++) {
-                        var key = headers[i];
-                        if (key) out.fields[key] = (cells[i].innerText || '').replace(/\s+/g, ' ').trim();
+                    // First row under the header with real content in it. Some
+                    // layouts put a spacer or a colgroup-ish row in between.
+                    var dataRows = [];
+                    for (var r = 1; r < trs.length; r++) {
+                        var cells = Array.prototype.slice.call(trs[r].querySelectorAll('td'));
+                        if (cells.length < 2) continue;
+                        var texts = cells.map(function (c) { return norm(c.innerText); });
+                        if (texts.join('').length === 0) continue;
+                        dataRows.push(texts);
+                    }
+                    if (dataRows.length === 0) return;
+
+                    bestScore = score;
+                    best = { headers: headerTexts, rows: dataRows };
+                });
+            });
+
+            if (best) {
+                out.rowCount = best.rows.length;
+                var headers = best.headers;
+                var row = best.rows[0];
+
+                for (var i = 0; i < headers.length && i < row.length; i++) {
+                    if (headers[i]) out.fields[headers[i]] = row[i];
+                }
+
+                // Header name -> canonical field. Exact match is tried before
+                // "contains", and a column is never consumed twice, because
+                // "Trade Mark No." and "Trade Mark" both contain "trade mark"
+                // and a contains-only match would hand the mark name the
+                // application number.
+                var taken = {};
+                function pick(exact, contains) {
+                    var h;
+                    for (h = 0; h < headers.length; h++) {
+                        if (taken[h] || h >= row.length) continue;
+                        var t = headers[h].toLowerCase().replace(/[.:]/g, '').trim();
+                        for (var e = 0; e < exact.length; e++) {
+                            if (t === exact[e]) { taken[h] = true; return row[h]; }
+                        }
+                    }
+                    for (h = 0; h < headers.length; h++) {
+                        if (taken[h] || h >= row.length) continue;
+                        var c = headers[h].toLowerCase();
+                        for (var k = 0; k < contains.length; k++) {
+                            if (c.indexOf(contains[k]) !== -1) { taken[h] = true; return row[h]; }
+                        }
+                    }
+                    return '';
+                }
+
+                // Order matters: the most specific headers claim their column
+                // before the looser ones get a chance at it.
+                out.named.trademarkNo     = pick(['trade mark no', 'application no'], ['trade mark no', 'application no']);
+                out.named.applicationDate = pick(['date of application', 'application date'], ['date of application']);
+                out.named.niceClass       = pick(['class'], ['class']);
+                out.named.filingMode      = pick(['filing mode'], ['filing mode']);
+                out.named.markName        = pick(['trade mark', 'mark'], ['trade mark']);
+                out.named.tmType          = pick(['tm type', 'trade mark type'], ['tm type', 'type']);
+                // CONFIRMED AGAINST THE LIVE PAGE. The result table has TEN
+                // columns, and "User Detail" and "Proprietor Name" are two of
+                // them, not one: User Detail carries the use claim ("Proposed to
+                // be used") while Proprietor Name carries the owner ("LEADS
+                // BRAND CONNECT PRIVATE LIMITED"). Collapsing them meant the
+                // docket recorded "Proposed to be used" as the proprietor.
+                out.named.userDetail      = pick(['user detail'], ['user detail']);
+                out.named.proprietorName  = pick(['proprietor name', 'proprietor'], ['proprietor']);
+                out.named.publication     = pick(['publication details'], ['publication', 'journal']);
+                out.named.validUpto       = pick(['valid upto', 'valid upto/renewed upto'], ['valid upto', 'renewed']);
+            }
+
+            // --- which document panels this result offers --------------------
+            // Reported so the caller can say "this mark has no Uploaded
+            // Documents panel" rather than "0 documents found", which are very
+            // different statements.
+            ipdDocuments().forEach(function (doc) {
+                doc.querySelectorAll('a, button, input[type="button"], input[type="submit"]').forEach(function (el) {
+                    if (!ipdVisible(el)) return;
+                    var text = norm((el.innerText || '') + ' ' + (el.value || ''));
+                    if (!text) return;
+                    if (/pr details|reminders|correspondence|uploaded document/i.test(text)) {
+                        if (out.panels.indexOf(text) === -1) out.panels.push(text);
                     }
                 });
             });
@@ -936,10 +1080,40 @@ internal static class PortalScripts
 
         (function () {
             var payload = %%PAYLOAD%%;
+            var wanted = String(payload.number || '').trim();
+
+            // ALREADY-SHOWING CHECK.
+            //
+            // The e-Register replaces the search form with the result once you
+            // press View, so on a result page there is no application-number box
+            // to find. This returned ok:false / "no-field", the caller gave up,
+            // and every run against a mark you were already looking at reported
+            // "No application-number field on this page - open the e-Status page
+            // and sign in first" - while the answer was on screen the whole time.
+            //
+            // If the result on the page IS the number being asked for, that is a
+            // success with nothing left to submit, not a failure.
+            var showing = '';
+            ipdDocuments().forEach(function (doc) {
+                if (showing) return;
+                doc.querySelectorAll('table tr').forEach(function (tr) {
+                    if (showing || tr.querySelector('tr')) return;
+                    var cells = tr.querySelectorAll('td');
+                    for (var c = 0; c < cells.length && c < 3; c++) {
+                        var t = (cells[c].innerText || '').replace(/\s+/g, '').trim();
+                        if (t && t === wanted) { showing = t; return; }
+                    }
+                });
+            });
+
+            if (showing) {
+                return JSON.stringify({ ok: true, alreadyShowing: true, submitted: false, shown: showing });
+            }
+
             var field = ipdBestField(
                 'input[type="text"], input[type="number"], input:not([type])',
                 [['application number', 20], ['application no', 20], ['app no', 14],
-                 ['application', 8], ['number', 3]],
+                 ['trade mark no', 14], ['application', 8], ['number', 3]],
                 ['captcha', 'wordmark', 'class', 'vienna']);
             if (!field) return JSON.stringify({ ok: false, reason: 'no-field' });
 
@@ -957,7 +1131,7 @@ internal static class PortalScripts
             });
 
             if (button) { try { button.click(); } catch (e) { } }
-            return JSON.stringify({ ok: true, submitted: !!button });
+            return JSON.stringify({ ok: true, alreadyShowing: false, submitted: !!button });
         })();
         """;
 }

@@ -11,8 +11,25 @@ public sealed partial class JournalPage : Page
     {
         InitializeComponent();
 
-        // Seeded so the picker never sits at DateTimeOffset.MinValue (1601).
-        FetchDateBox.Date = DateTimeOffset.Now;
+        // THE 1601 BUG, PROPERLY THIS TIME.
+        //
+        // Setting DatePicker.Date was never enough. WinUI's DatePicker tracks
+        // two things: Date (a DateTimeOffset, defaulting to
+        // DateTimeOffset.MinValue - 01 Jan 1601, the FILETIME epoch) and
+        // SelectedDate (a DateTimeOffset?, null until the control holds a real
+        // value). The "day / month / year" placeholder columns are the control
+        // saying SelectedDate is still null, and assigning Date does not clear
+        // that: the template overwrites it when it is applied, which is after
+        // the constructor runs. So the seed looked applied and wasn't.
+        //
+        // SelectedDate is the property that actually sets the control. It is
+        // assigned here and again on Loaded, once the template exists.
+        FetchDateBox.SelectedDate = DateTimeOffset.Now;
+        Loaded += (_, _) =>
+        {
+            FetchDateBox.SelectedDate ??= DateTimeOffset.Now;
+        };
+
         try { LoadIssues(); LoadAlerts(); }
         catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"JournalPage load failed: {ex}"); }
     }
@@ -22,7 +39,24 @@ public sealed partial class JournalPage : Page
         // Clears duplicates left by earlier runs, before deduplication existed.
         try { App.Journal.RemoveDuplicates(); } catch { /* cosmetic */ }
 
-        IssueList.ItemsSource = App.Journal.GetAll().Select(j => new IssueRow(j)).ToList();
+        // Alert counts per issue, so a row can say "Match found (3)" instead of
+        // the single "Pending review" every row used to show regardless of what
+        // had actually happened to it.
+        Dictionary<int, int> alertCounts;
+        try
+        {
+            alertCounts = App.Watch.GetAllIncludingDismissed()
+                .GroupBy(a => a.JournalIssueId)
+                .ToDictionary(g => g.Key, g => g.Count());
+        }
+        catch
+        {
+            alertCounts = new Dictionary<int, int>();
+        }
+
+        IssueList.ItemsSource = App.Journal.GetAll()
+            .Select(j => new IssueRow(j, alertCounts.TryGetValue(j.Id, out var c) ? c : 0))
+            .ToList();
     }
 
     private void LoadAlerts()
@@ -45,11 +79,14 @@ public sealed partial class JournalPage : Page
         // before the Registry existed, and correctly finding none. The picker
         // is now seeded with today's date in the constructor, and this guard
         // catches any other route to an unset value.
-        var date = FetchDateBox.Date.DateTime;
+        // Read from SelectedDate, with Date only as a fallback - see the note in
+        // the constructor. The year guard stays as a backstop: a value this
+        // wrong must never reach a query, whatever route it came in by.
+        var date = (FetchDateBox.SelectedDate ?? FetchDateBox.Date).DateTime;
         if (date.Year < 1950)
         {
             date = DateTime.Today;
-            FetchDateBox.Date = DateTimeOffset.Now;
+            FetchDateBox.SelectedDate = DateTimeOffset.Now;
         }
         FetchStatusText.Text = "Fetching from IP India...";
 
@@ -168,18 +205,29 @@ public sealed partial class JournalPage : Page
     /// there was no way to clear it - which made the list look broken even when
     /// the fetch had worked.
     /// </summary>
-    private void ToggleReviewed_Click(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
+    /// <summary>
+    /// Opens an issue's PDF link in the default browser.
+    ///
+    /// Replaces ToggleReviewed_Click, whose job moved into the status badge -
+    /// the badge now shows the pipeline's real state and offers the reviewed
+    /// toggle inside it, so a separate button for that alone no longer earns
+    /// its place in the row.
+    /// </summary>
+    private async void RowOpenUrl_Click(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
     {
         if (sender is not Button { Tag: int id }) return;
 
         var issue = App.Journal.GetAll().FirstOrDefault(j => j.Id == id);
-        if (issue is null) return;
+        if (issue is null || string.IsNullOrWhiteSpace(issue.Url)) return;
 
-        App.Journal.MarkReviewed(id, !issue.Reviewed);
-        App.Audit.Log("Update", "JournalIssue", id,
-            $"Marked issue {issue.IssueNumber} as {(!issue.Reviewed ? "reviewed" : "pending review")}.");
-
-        LoadIssues();
+        try
+        {
+            await Windows.System.Launcher.LaunchUriAsync(new Uri(issue.Url));
+        }
+        catch (Exception ex)
+        {
+            FetchStatusText.Text = $"Couldn't open that link: {ex.Message}";
+        }
     }
 
     /// <summary>
@@ -384,42 +432,95 @@ public sealed partial class JournalPage : Page
         var library = System.IO.Path.Combine(App.AppDataDirectory, "JournalLibrary");
         System.IO.Directory.CreateDirectory(library);
 
+        var run = await DownloadIssuePdfsAsync(journalNumber, showBrowser.IsChecked == true);
+        log.Append(run.Log);
+        LoadIssues();
+
+        FetchStatusText.Text = run.Attempted == 0
+            ? $"No download links were found in the row for Journal {journalNumber}."
+            : $"Auto-download finished - {run.Saved} of {run.Attempted} file(s) saved.";
+
+        await TextReportDialog.ShowAsync(XamlRoot, "Auto-download result", log.ToString(), "autodownload");
+    }
+
+    /// <summary>Outcome of fetching one issue's PDFs through the hidden browser.</summary>
+    private sealed record IssueDownloadResult(int Saved, int Attempted, string? FirstPath, string Log);
+
+    /// <summary>
+    /// Fetches every class-range PDF for one journal issue by driving the hidden
+    /// browser, and records the result against the issue.
+    ///
+    /// WHY THE BROWSER IS THE PRIMARY PATH, NOT A FALLBACK.
+    ///
+    /// Your issue list shows 2274, 2273, 2272 and 2271 with dates parsed
+    /// correctly and the link column EMPTY. That is not a parsing failure - it
+    /// is the listing telling the truth. The Download column on
+    /// search.ipindia.gov.in/IPOJournal is rendered as __doPostBack handlers:
+    /// the PDF only exists as the response to a form submission carrying
+    /// __VIEWSTATE, so there is no address to GET and no regex can invent one.
+    ///
+    /// Everything downstream - download, text extraction, OCR, the name search,
+    /// the watch - was gated on a URL that can never exist for these rows. That
+    /// is the single reason Journal Watch does nothing beyond listing issues.
+    ///
+    /// This was already implemented for the manual "Auto-download" button. It is
+    /// extracted here so the row action and the name search use the same code
+    /// rather than growing second copies of it.
+    /// </summary>
+    private async System.Threading.Tasks.Task<IssueDownloadResult> DownloadIssuePdfsAsync(
+        string journalNumber, bool visible = false)
+    {
+        var log = new System.Text.StringBuilder();
+        var library = System.IO.Path.Combine(App.AppDataDirectory, "JournalLibrary");
+        System.IO.Directory.CreateDirectory(library);
+
         HeadlessJournalDownloader? downloader = null;
+        var saved = 0;
+        var attempted = 0;
+        string? firstPath = null;
 
         try
         {
-            var visible = showBrowser.IsChecked == true;
             downloader = new HeadlessJournalDownloader(HiddenBrowserHost, visible);
             downloader.Progress += message =>
                 DispatcherQueue.TryEnqueue(() => FetchStatusText.Text = message);
 
             var links = await downloader.ListLinksAsync(journalNumber);
+            attempted = links.Count;
 
             if (links.Count == 0)
             {
-                FetchStatusText.Text = $"No links found in the row for Journal {journalNumber}. " +
-                                       "Check the number matches the listing exactly.";
-                return;
+                log.AppendLine($"Journal {journalNumber}: no download links found in its row.");
+                RecordIssueError(journalNumber,
+                    "The listing row for this issue produced no download links at all.");
+                return new IssueDownloadResult(0, 0, null, log.ToString());
             }
 
-            log.AppendLine($"Journal {journalNumber} — {links.Count} link(s) found:");
-            foreach (var l in links) log.AppendLine($"  • {l.Label}");
+            log.AppendLine($"Journal {journalNumber} - {links.Count} link(s) found:");
+            foreach (var l in links) log.AppendLine($"  - {l.Label}");
             log.AppendLine();
 
-            var saved = 0;
             var issueRecorded = false;
 
-            foreach (var link in links)
+            for (var i = 0; i < links.Count; i++)
             {
+                var link = links[i];
+
+                DispatcherQueue.TryEnqueue(() =>
+                    FetchStatusText.Text = $"Journal {journalNumber}: downloading file {i + 1} of {links.Count} " +
+                                           $"({link.Label})...");
+
                 var safeLabel = string.Concat(link.Label.Select(c => char.IsLetterOrDigit(c) ? c : '_'));
                 if (safeLabel.Length > 50) safeLabel = safeLabel[..50];
 
                 var target = System.IO.Path.Combine(library, $"journal_{journalNumber}_{safeLabel}.pdf");
 
-                // Already have it - don't re-download a 200 MB file.
+                // Already on disk - never re-fetch a file this large without
+                // being asked to. A journal issue runs to hundreds of megabytes.
                 if (System.IO.File.Exists(target) && new System.IO.FileInfo(target).Length > 20_000)
                 {
-                    log.AppendLine($"[skip] {link.Label} — already downloaded");
+                    log.AppendLine($"[skip] {link.Label} - already downloaded");
+                    firstPath ??= target;
                     saved++;
                     continue;
                 }
@@ -429,7 +530,8 @@ public sealed partial class JournalPage : Page
                 if (outcome.Saved)
                 {
                     saved++;
-                    log.AppendLine($"[ok]   {link.Label} — {outcome.Bytes / 1024 / 1024.0:0.0} MB");
+                    firstPath ??= outcome.FilePath;
+                    log.AppendLine($"[ok]   {link.Label} - {outcome.Bytes / 1024 / 1024.0:0.0} MB");
 
                     if (!issueRecorded)
                     {
@@ -442,51 +544,149 @@ public sealed partial class JournalPage : Page
                             LocalPdfPath = outcome.FilePath!,
                             PdfSizeBytes = outcome.Bytes,
                             DownloadedUtc = DateTime.UtcNow,
-                            Notes = $"Auto-downloaded via browser: {link.Label}"
+                            Notes = $"Downloaded via browser: {link.Label}"
                         });
                         issueRecorded = true;
                     }
                 }
                 else
                 {
-                    log.AppendLine($"[fail] {link.Label} — {outcome.Error}");
+                    log.AppendLine($"[fail] {link.Label} - {outcome.Error}");
                 }
 
-                // Postback links usually leave the page in a changed state.
+                // A postback leaves the page in a changed state, so every click
+                // has to start from the listing again.
                 await downloader.ReturnToListingAsync();
             }
 
+            // A run that saved nothing is a failure, and must be recorded as one.
+            // Marking an issue reviewed or processed when the network let go is
+            // how a watch quietly stops being a watch.
+            if (saved == 0)
+                RecordIssueError(journalNumber,
+                    $"All {links.Count} download link(s) failed. See the auto-download report for detail.");
+            else
+                ClearIssueError(journalNumber);
+
             log.AppendLine();
             log.AppendLine($"Done: {saved} of {links.Count} file(s) in {library}");
-
-            LoadIssues();
-            FetchStatusText.Text = $"Auto-download finished — {saved} of {links.Count} file(s) saved.";
         }
         catch (Exception ex)
         {
             log.AppendLine();
             log.AppendLine($"Failed: {ex.Message}");
-            FetchStatusText.Text = $"Auto-download failed: {ex.Message}";
+            RecordIssueError(journalNumber, ex.Message);
+            DispatcherQueue.TryEnqueue(() => FetchStatusText.Text = $"Download failed: {ex.Message}");
         }
         finally
         {
             downloader?.Dispose();
 
-            // Put the host back out of sight after a visible diagnostic run.
-            //
-            // BUG FIX: this set Opacity = 0, which does nothing to a WebView2 -
-            // it is composited outside the XAML visual tree and honours neither
-            // Opacity nor ZIndex, which is why the IP India page stayed painted
-            // over this one. Moving the host off-screen is what actually hides
-            // it. Dispose does the same thing; this is belt and braces for the
-            // path where the downloader was never constructed.
             HiddenBrowserHost.Margin = HeadlessJournalDownloader.OffScreen;
             HiddenBrowserHost.IsHitTestVisible = false;
             HiddenBrowserHost.HorizontalAlignment = Microsoft.UI.Xaml.HorizontalAlignment.Left;
             HiddenBrowserHost.VerticalAlignment = Microsoft.UI.Xaml.VerticalAlignment.Top;
         }
 
-        await TextReportDialog.ShowAsync(XamlRoot, "Auto-download result", log.ToString(), "autodownload");
+        return new IssueDownloadResult(saved, attempted, firstPath, log.ToString());
+    }
+
+    /// <summary>
+    /// Records why an issue could not be processed, so the row can show "Failed"
+    /// with a reason rather than sitting on a status that implies success.
+    /// </summary>
+    private static void RecordIssueError(string issueNumber, string error)
+    {
+        try
+        {
+            var issue = App.Journal.GetAll()
+                .FirstOrDefault(j => string.Equals(j.IssueNumber, issueNumber, StringComparison.OrdinalIgnoreCase));
+            if (issue is null) return;
+
+            issue.LastError = error;
+            App.Database.SaveChanges();
+        }
+        catch
+        {
+            // Recording a failure must not itself become one.
+        }
+    }
+
+    private static void ClearIssueError(string issueNumber)
+    {
+        try
+        {
+            var issue = App.Journal.GetAll()
+                .FirstOrDefault(j => string.Equals(j.IssueNumber, issueNumber, StringComparison.OrdinalIgnoreCase));
+            if (issue is null || issue.LastError is null) return;
+
+            issue.LastError = null;
+            App.Database.SaveChanges();
+        }
+        catch { }
+    }
+
+    /// <summary>
+    /// "Get PDF" on a row. The listing gives most issues no fetchable URL, so
+    /// this is the only route to the file for them.
+    /// </summary>
+    private async void RowGetPdf_Click(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
+    {
+        if (sender is not Button { Tag: int id }) return;
+
+        var issue = App.Journal.GetAll().FirstOrDefault(j => j.Id == id);
+        if (issue is null) return;
+
+        FetchStatusText.Text = $"Journal {issue.IssueNumber}: opening the listing...";
+
+        var run = await DownloadIssuePdfsAsync(issue.IssueNumber);
+        LoadIssues();
+
+        FetchStatusText.Text = run.Saved > 0
+            ? $"Journal {issue.IssueNumber}: {run.Saved} of {run.Attempted} file(s) saved."
+            : $"Journal {issue.IssueNumber}: nothing could be downloaded - the row now shows why.";
+
+        if (run.Attempted > 0)
+            await TextReportDialog.ShowAsync(
+                XamlRoot, $"Journal {issue.IssueNumber} download", run.Log, "issuedownload");
+    }
+
+    /// <summary>
+    /// Shows what a status badge means, and the error behind it where there is
+    /// one. The badge is the only place the pipeline's state is visible, so it
+    /// has to be inspectable rather than decorative.
+    /// </summary>
+    private async void IssueStatus_Click(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
+    {
+        if (sender is not Button { Tag: int id }) return;
+
+        var row = (IssueList.ItemsSource as List<IssueRow>)?.FirstOrDefault(r => r.Id == id);
+        if (row is null) return;
+
+        var dialog = new ContentDialog
+        {
+            XamlRoot = XamlRoot,
+            Title = $"Journal {row.IssueNumber} - {row.StatusLabel}",
+            Content = new TextBlock
+            {
+                Text = row.StatusDetail,
+                TextWrapping = Microsoft.UI.Xaml.TextWrapping.Wrap
+            },
+            PrimaryButtonText = "Toggle reviewed",
+            CloseButtonText = "Close",
+            DefaultButton = ContentDialogButton.Close
+        };
+
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
+
+        var issue = App.Journal.GetAll().FirstOrDefault(j => j.Id == id);
+        if (issue is null) return;
+
+        App.Journal.MarkReviewed(id, !issue.Reviewed);
+        App.Audit.Log("Update", "JournalIssue", id,
+            $"Marked issue {issue.IssueNumber} as {(!issue.Reviewed ? "reviewed" : "pending review")}.");
+
+        LoadIssues();
     }
 
     private async void BrowseIssues_Click(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
@@ -1012,20 +1212,124 @@ public sealed partial class JournalPage : Page
         public string IssueNumber { get; }
         public string PublicationDate { get; }
         public string Url { get; }
-        public string ReviewedLabel { get; }
-        public Microsoft.UI.Xaml.Media.SolidColorBrush ReviewedBrush { get; }
 
-        public IssueRow(JournalIssue j)
+        /// <summary>Empty when the listing gave no fetchable link - see StatusDetail.</summary>
+        public bool HasUrl { get; }
+
+        /// <summary>Shown when there is no link, which is the common case.</summary>
+        public string LinkLabel { get; }
+
+        public string StatusLabel { get; }
+
+        /// <summary>The tooltip behind the badge: what the status means and what to do about it.</summary>
+        public string StatusDetail { get; }
+
+        public Microsoft.UI.Xaml.Media.SolidColorBrush StatusBrush { get; }
+
+        /// <summary>Kept so the existing template binding does not break.</summary>
+        public string ReviewedLabel => StatusLabel;
+        public Microsoft.UI.Xaml.Media.SolidColorBrush ReviewedBrush => StatusBrush;
+
+        /// <summary>
+        /// One row's real state, derived from the timestamps the pipeline
+        /// already records.
+        ///
+        /// Every row used to read "Pending review" whatever had happened to it -
+        /// never downloaded, downloaded, OCR'd, watched, or failed outright all
+        /// looked identical, so the list could not tell you where the pipeline
+        /// had stopped. That is why it looked like nothing was working even on
+        /// the runs where something was.
+        ///
+        /// Deliberately DERIVED rather than stored: adding a status column would
+        /// bump the schema version, and in this app a schema bump deletes the
+        /// database and restores from a snapshot. Not worth it for a value that
+        /// can be computed exactly from LastError, LocalPdfPath,
+        /// TextExtractedUtc, WatchRunUtc and Reviewed.
+        /// </summary>
+        public IssueRow(JournalIssue j, int alertCount)
         {
             Id = j.Id;
             IssueNumber = j.IssueNumber;
             PublicationDate = j.PublicationDate.ToString("dd MMM yyyy");
-            Url = j.Url;
-            ReviewedLabel = j.Reviewed ? "Reviewed" : "Pending review";
-            ReviewedBrush = new Microsoft.UI.Xaml.Media.SolidColorBrush(
-                j.Reviewed
-                    ? Windows.UI.Color.FromArgb(255, 53, 208, 113)
-                    : Windows.UI.Color.FromArgb(255, 255, 170, 36));
+            Url = j.Url ?? string.Empty;
+            HasUrl = !string.IsNullOrWhiteSpace(Url);
+
+            var pdfOnDisk = !string.IsNullOrWhiteSpace(j.LocalPdfPath) &&
+                            System.IO.File.Exists(j.LocalPdfPath);
+
+            LinkLabel = HasUrl
+                ? Url
+                : pdfOnDisk
+                    ? System.IO.Path.GetFileName(j.LocalPdfPath)
+                    : "No direct link - use Get PDF";
+
+            string label;
+            string detail;
+            Windows.UI.Color colour;
+
+            if (!string.IsNullOrWhiteSpace(j.LastError))
+            {
+                label = "Failed";
+                detail = j.LastError!;
+                colour = Windows.UI.Color.FromArgb(255, 255, 91, 82);
+            }
+            else if (j.Reviewed)
+            {
+                label = "Reviewed";
+                detail = "You have marked this issue as reviewed. Click to move it back to pending.";
+                colour = Windows.UI.Color.FromArgb(255, 53, 208, 113);
+            }
+            else if (j.WatchRunUtc is not null)
+            {
+                if (alertCount > 0)
+                {
+                    label = $"Match found ({alertCount})";
+                    detail = $"The watch ran on {j.WatchRunUtc:dd MMM yyyy HH:mm} and raised {alertCount} " +
+                             "alert(s). They are listed below.";
+                    colour = Windows.UI.Color.FromArgb(255, 255, 140, 60);
+                }
+                else
+                {
+                    label = "No match";
+                    detail = $"The watch ran in full on {j.WatchRunUtc:dd MMM yyyy HH:mm} against " +
+                             $"{j.MarksParsed} published mark(s) and found nothing above the threshold.";
+                    colour = Windows.UI.Color.FromArgb(255, 138, 148, 168);
+                }
+            }
+            else if (j.TextExtractedUtc is not null)
+            {
+                label = "Processed";
+                detail = $"Text extracted on {j.TextExtractedUtc:dd MMM yyyy HH:mm} via " +
+                         $"{j.ExtractionMethod ?? "unknown method"}; {j.MarksParsed} mark(s) parsed. " +
+                         "The watch has not been run on it yet.";
+                colour = Windows.UI.Color.FromArgb(255, 91, 140, 255);
+            }
+            else if (pdfOnDisk)
+            {
+                label = "Downloaded";
+                detail = $"PDF on disk ({j.PdfSizeBytes / 1024 / 1024.0:0.0} MB), downloaded " +
+                         $"{j.DownloadedUtc:dd MMM yyyy HH:mm}. Text has not been extracted yet.";
+                colour = Windows.UI.Color.FromArgb(255, 91, 140, 255);
+            }
+            else if (HasUrl)
+            {
+                label = "Not downloaded";
+                detail = "A PDF link is on record but the file has not been fetched yet.";
+                colour = Windows.UI.Color.FromArgb(255, 255, 170, 36);
+            }
+            else
+            {
+                label = "No PDF link";
+                detail = "The listing page advertised no fetchable URL for this issue - its Download " +
+                         "column uses ASP.NET postbacks, which have no address to GET. Use \"Get PDF\" " +
+                         "on this row, which drives a hidden browser and catches the file the click " +
+                         "produces.";
+                colour = Windows.UI.Color.FromArgb(255, 255, 170, 36);
+            }
+
+            StatusLabel = label;
+            StatusDetail = detail;
+            StatusBrush = new Microsoft.UI.Xaml.Media.SolidColorBrush(colour);
         }
     }
 
