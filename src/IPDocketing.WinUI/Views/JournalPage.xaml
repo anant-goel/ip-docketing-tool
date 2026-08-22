@@ -5,6 +5,13 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     Background="Transparent">
 
+    <Grid>
+    <!-- Zero-sized host for the headless downloader's WebView2. It must be in
+         the visual tree to initialise, but at 1x1 and fully transparent the
+         browser runs without ever being visible. -->
+    <Grid x:Name="HiddenBrowserHost" Width="1" Height="1" Opacity="0"
+          HorizontalAlignment="Left" VerticalAlignment="Top" IsHitTestVisible="False" />
+
     <Grid Padding="30,24,30,30">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
@@ -25,7 +32,10 @@
                            Style="{StaticResource SubtitleStyle}" Margin="0,4,0,0" />
             </StackPanel>
             <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
-                <Button Content="Browse &amp; download issues" Style="{StaticResource MergedAccentButtonStyle}"
+                <Button Content="Auto-download (background)" Style="{StaticResource MergedAccentButtonStyle}"
+                        Click="AutoDownload_Click"
+                        ToolTipService.ToolTip="Drives a hidden browser: clicks each class-range link and saves the PDF. Nothing is shown — you just get the result." />
+                <Button Content="Browse &amp; download issues" Style="{StaticResource MergedGlassButtonBaseStyle}"
                         Click="BrowseIssues_Click"
                         ToolTipService.ToolTip="Lists every issue with all its class-range PDFs. Pick and download directly - no class matching, no date box." />
                 <Button Content="Pull latest weekly issues" Style="{StaticResource MergedGlassButtonBaseStyle}"
@@ -157,5 +167,6 @@
                 </ListView.ItemTemplate>
             </ListView>
         </Border>
+    </Grid>
     </Grid>
 </Page>

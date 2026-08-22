@@ -1,6 +1,8 @@
 using IPDocketing.Core.Models;
 using Microsoft.UI.Xaml.Controls;
 
+using IPDocketing.WinUI.Services;
+
 namespace IPDocketing.WinUI.Views;
 
 public sealed partial class JournalPage : Page
@@ -196,6 +198,187 @@ public sealed partial class JournalPage : Page
     /// A tool that can't be overridden by the person using it is a tool that
     /// fails closed, and this one was failing closed.
     /// </summary>
+    /// <summary>
+    /// Downloads an issue's PDFs by driving a hidden browser, with no window
+    /// shown and no dialogs during the run - you get a result at the end.
+    ///
+    /// This exists because the HTTP approach kept extracting zero links, and
+    /// the most likely reason is that there are no URLs to extract: an ASP.NET
+    /// grid renders these as __doPostBack handlers, where the file only exists
+    /// as the response to a form submission. A browser sidesteps that entirely
+    /// by doing what a person does - running the JavaScript and receiving a
+    /// file - which WebView2 then hands us with a settable destination path.
+    /// </summary>
+    private async void AutoDownload_Click(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
+    {
+        var issuePrompt = new TextBox
+        {
+            Header = "Journal number",
+            PlaceholderText = "e.g. 2273",
+            Text = App.Journal.GetAll()
+                .OrderByDescending(j => j.PublicationDate)
+                .FirstOrDefault()?.IssueNumber ?? "",
+            MinWidth = 320
+        };
+
+        var panel = new StackPanel { Spacing = 12, Width = 360 };
+        panel.Children.Add(issuePrompt);
+        panel.Children.Add(new TextBlock
+        {
+            Text = "A hidden browser opens the listing, clicks each of that issue's links, " +
+                   "and saves whatever downloads. Nothing appears on screen. Expect roughly " +
+                   "10–20 seconds per file — Journal PDFs are large.",
+            TextWrapping = Microsoft.UI.Xaml.TextWrapping.Wrap,
+            FontSize = 11,
+            Opacity = 0.65
+        });
+
+        var ask = new ContentDialog
+        {
+            XamlRoot = XamlRoot,
+            Title = "Auto-download in background",
+            Content = panel,
+            PrimaryButtonText = "Start",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Primary
+        };
+
+        if (await ask.ShowAsync() != ContentDialogResult.Primary) return;
+
+        var journalNumber = issuePrompt.Text?.Trim() ?? "";
+        if (journalNumber.Length == 0)
+        {
+            FetchStatusText.Text = "Enter a journal number first.";
+            return;
+        }
+
+        var log = new System.Text.StringBuilder();
+        var library = System.IO.Path.Combine(App.AppDataDirectory, "JournalLibrary");
+        System.IO.Directory.CreateDirectory(library);
+
+        HeadlessJournalDownloader? downloader = null;
+
+        try
+        {
+            downloader = new HeadlessJournalDownloader(HiddenBrowserHost);
+            downloader.Progress += message =>
+                DispatcherQueue.TryEnqueue(() => FetchStatusText.Text = message);
+
+            var links = await downloader.ListLinksAsync(journalNumber);
+
+            if (links.Count == 0)
+            {
+                FetchStatusText.Text = $"No links found in the row for Journal {journalNumber}. " +
+                                       "Check the number matches the listing exactly.";
+                return;
+            }
+
+            log.AppendLine($"Journal {journalNumber} — {links.Count} link(s) found:");
+            foreach (var l in links) log.AppendLine($"  • {l.Label}");
+            log.AppendLine();
+
+            var saved = 0;
+            var issueRecorded = false;
+
+            foreach (var link in links)
+            {
+                var safeLabel = string.Concat(link.Label.Select(c => char.IsLetterOrDigit(c) ? c : '_'));
+                if (safeLabel.Length > 50) safeLabel = safeLabel[..50];
+
+                var target = System.IO.Path.Combine(library, $"journal_{journalNumber}_{safeLabel}.pdf");
+
+                // Already have it - don't re-download a 200 MB file.
+                if (System.IO.File.Exists(target) && new System.IO.FileInfo(target).Length > 20_000)
+                {
+                    log.AppendLine($"[skip] {link.Label} — already downloaded");
+                    saved++;
+                    continue;
+                }
+
+                var outcome = await downloader.DownloadLinkAsync(link, target, TimeSpan.FromMinutes(4));
+
+                if (outcome.Saved)
+                {
+                    saved++;
+                    log.AppendLine($"[ok]   {link.Label} — {outcome.Bytes / 1024 / 1024.0:0.0} MB");
+
+                    if (!issueRecorded)
+                    {
+                        App.Journal.Add(new IPDocketing.Core.Models.JournalIssue
+                        {
+                            IssueNumber = journalNumber,
+                            PublicationDate = App.Journal.GetAll()
+                                .FirstOrDefault(j => j.IssueNumber == journalNumber)?.PublicationDate
+                                ?? DateTime.Today,
+                            LocalPdfPath = outcome.FilePath!,
+                            PdfSizeBytes = outcome.Bytes,
+                            DownloadedUtc = DateTime.UtcNow,
+                            Notes = $"Auto-downloaded via browser: {link.Label}"
+                        });
+                        issueRecorded = true;
+                    }
+                }
+                else
+                {
+                    log.AppendLine($"[fail] {link.Label} — {outcome.Error}");
+                }
+
+                // Postback links usually leave the page in a changed state.
+                await downloader.ReturnToListingAsync();
+            }
+
+            log.AppendLine();
+            log.AppendLine($"Done: {saved} of {links.Count} file(s) in {library}");
+
+            LoadIssues();
+            FetchStatusText.Text = $"Auto-download finished — {saved} of {links.Count} file(s) saved.";
+        }
+        catch (Exception ex)
+        {
+            log.AppendLine();
+            log.AppendLine($"Failed: {ex.Message}");
+            FetchStatusText.Text = $"Auto-download failed: {ex.Message}";
+        }
+        finally
+        {
+            downloader?.Dispose();
+        }
+
+        var body = new TextBox
+        {
+            Text = log.ToString(),
+            IsReadOnly = true,
+            AcceptsReturn = true,
+            TextWrapping = Microsoft.UI.Xaml.TextWrapping.NoWrap,
+            FontFamily = new Microsoft.UI.Xaml.Media.FontFamily("Cascadia Mono, Consolas"),
+            FontSize = 12,
+            Height = 340,
+            Width = 560
+        };
+
+        var result = new ContentDialog
+        {
+            XamlRoot = XamlRoot,
+            Title = "Auto-download result",
+            Content = new ScrollViewer
+            {
+                Content = body,
+                MaxHeight = 360,
+                HorizontalScrollBarVisibility = ScrollBarVisibility.Auto
+            },
+            PrimaryButtonText = "Copy",
+            CloseButtonText = "Close",
+            DefaultButton = ContentDialogButton.Close
+        };
+
+        if (await result.ShowAsync() == ContentDialogResult.Primary)
+        {
+            var package = new Windows.ApplicationModel.DataTransfer.DataPackage();
+            package.SetText(log.ToString());
+            Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(package);
+        }
+    }
+
     private async void BrowseIssues_Click(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
     {
         FetchStatusText.Text = "Reading the Journal listing...";
