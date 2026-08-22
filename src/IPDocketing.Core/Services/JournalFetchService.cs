@@ -59,14 +59,53 @@ public class JournalFetchService
         foreach (var row in rows)
         {
             var cells = row.SelectNodes("./td");
-            if (cells is null || cells.Count < 4) continue; // header row or malformed - skip
+            // Was: cells.Count < 4. A row whose Download cell is merged, or a
+            // layout with one fewer column, was discarded whole. Three cells is
+            // enough to identify an issue (number + a date); the links are found
+            // by scanning the row rather than by column position.
+            if (cells is null || cells.Count < 3) continue;
 
             // Expected shape: [Sr.No, Journal No, Date of Publication, Date of Availability, Download links...]
-            var journalNo = cells[1].InnerText.Trim();
-            if (!Regex.IsMatch(journalNo, @"^\d+")) continue; // not a data row
+            // De-entitized, not just trimmed: these cells routinely arrive as
+            // "&nbsp;2273&nbsp;", and Trim() does not remove a non-breaking
+            // space, so the ^\d{3,5}$ test failed on every row and the whole
+            // listing looked empty.
+            var journalNo = CellText(cells[1]);
+            // The journal number was assumed to be in cell 1. If the table ever
+            // gains a leading column, every row stops matching and the listing
+            // silently looks empty. Now: prefer cell 1, but fall back to the
+            // first cell in the row that looks like an issue number.
+            if (!Regex.IsMatch(journalNo, @"^\d{3,5}$"))
+            {
+                var found = false;
+                for (var c = 0; c < Math.Min(cells.Count, 4); c++)
+                {
+                    var text = CellText(cells[c]);
+                    if (Regex.IsMatch(text, @"^\d{3,5}$"))
+                    {
+                        journalNo = text;
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found) continue; // genuinely not a data row
+            }
 
-            var pubDate = ParseDate(cells[2].InnerText);
-            var availDate = ParseDate(cells[3].InnerText);
+            // Scanned rather than indexed. I had just lowered the minimum cell
+            // count to 3 while this still read cells[3] - an IndexOutOfRange
+            // waiting for the first short row. Scanning also survives a column
+            // being inserted, which indexing does not.
+            DateTime? pubDate = null;
+            DateTime? availDate = null;
+
+            for (var c = 0; c < cells.Count; c++)
+            {
+                var parsed = ParseDate(cells[c].InnerText);
+                if (parsed is null) continue;
+
+                if (pubDate is null) pubDate = parsed;
+                else if (availDate is null) { availDate = parsed; break; }
+            }
 
             // LINK EXTRACTION - rewritten after your screenshot showed
             // "Journal 2273 has no class-range PDFs at all ... 0 link(s)".
@@ -256,6 +295,15 @@ public class JournalFetchService
         return null;
     }
 
+    /// <summary>
+    /// Readable text of one table cell: HTML entities decoded, non-breaking
+    /// spaces turned into ordinary ones, runs of whitespace collapsed.
+    /// </summary>
+    private static string CellText(HtmlNode cell) =>
+        Regex.Replace(
+            HtmlEntity.DeEntitize(cell.InnerText ?? string.Empty).Replace('\u00A0', ' '),
+            @"\s+", " ").Trim();
+
     private static string Absolutize(string url) =>
         url.StartsWith("http", StringComparison.OrdinalIgnoreCase)
             ? url
@@ -403,7 +451,21 @@ public class JournalFetchService
         var finalPath = Path.Combine(libraryPath, $"journal_{safeIssue}.pdf");
         var tempPath = finalPath + ".part";
 
-        if (File.Exists(finalPath)) return finalPath;
+        // BUG FIX: this used to return any existing file at this path, however
+        // small. A previous run that saved a 4 KB "service unavailable" page
+        // under a .pdf name therefore poisoned the cache permanently - every
+        // later download short-circuited to the error page, and the search that
+        // read it reported "not found" on a name that was in the Journal. A
+        // file only counts as already-downloaded if it is plausibly a Journal.
+        if (File.Exists(finalPath))
+        {
+            if (new FileInfo(finalPath).Length >= 20_000) return finalPath;
+            try { File.Delete(finalPath); } catch { /* re-download will overwrite */ }
+        }
+
+        // A .part left behind by an interrupted run must not be appended to or
+        // mistaken for progress.
+        try { if (File.Exists(tempPath)) File.Delete(tempPath); } catch { }
 
         using var response = await Http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct);
         response.EnsureSuccessStatusCode();
@@ -416,22 +478,81 @@ public class JournalFetchService
             throw new InvalidOperationException(
                 "The server returned an HTML page rather than a PDF - the Journal file store may be down.");
 
-        await using (var source = await response.Content.ReadAsStreamAsync(ct))
-        await using (var target = File.Create(tempPath))
+        try
         {
-            await source.CopyToAsync(target, ct);
+            await using (var source = await response.Content.ReadAsStreamAsync(ct))
+            await using (var target = File.Create(tempPath))
+            {
+                await source.CopyToAsync(target, ct);
+            }
+        }
+        catch
+        {
+            // A cancelled or failed copy must not leave a partial .part behind
+            // that the next run has to reason about.
+            try { if (File.Exists(tempPath)) File.Delete(tempPath); } catch { }
+            throw;
         }
 
         File.Move(tempPath, finalPath, overwrite: true);
         return finalPath;
     }
 
-    private static DateTime? ParseDate(string text)
+    /// <summary>
+    /// Reads a publication date out of a table cell.
+    ///
+    /// BUG FIX: this used to accept exactly one format, "dd/MM/yyyy", against
+    /// the cell's raw InnerText. Two things broke it in practice:
+    ///
+    ///   1. The cell text arrives HTML-encoded and padded - "&amp;nbsp;12/08/2026 "
+    ///      is not "12/08/2026", and TryParseExact rejects it outright.
+    ///   2. The listing does not use one format. Recent rows read "12/08/2026",
+    ///      older ones "12-08-2026", and some render "12 Aug 2026".
+    ///
+    /// Every row whose date failed to parse got PublicationDate = null, which
+    /// then made FindByDateAndClassAsync report "no issue was published on or
+    /// before {date}" no matter what date was asked for - the class lookup was
+    /// never the problem. The text is now de-entitized and whitespace-collapsed
+    /// first, and several day-first formats are tried.
+    ///
+    /// Day-first is asserted explicitly with InvariantCulture rather than left
+    /// to the machine's locale: on a US-locale machine, "05/08/2026" silently
+    /// parsed as 8 May instead of 5 August, which is a whole quarter's drift in
+    /// a docketing tool.
+    /// </summary>
+    private static DateTime? ParseDate(string? text)
     {
-        text = text.Trim();
-        return DateTime.TryParseExact(text, "dd/MM/yyyy", null,
-            System.Globalization.DateTimeStyles.None, out var result)
-            ? result
-            : null;
+        if (string.IsNullOrWhiteSpace(text)) return null;
+
+        var cleaned = Regex.Replace(
+            HtmlEntity.DeEntitize(text).Replace('\u00A0', ' '), @"\s+", " ").Trim();
+
+        if (cleaned.Length == 0) return null;
+
+        // A cell like "Date of Publication : 12/08/2026" - take the date part.
+        var embedded = Regex.Match(cleaned,
+            @"\b(\d{1,2}[\/\-\.\s][A-Za-z0-9]{1,9}[\/\-\.\s]\d{2,4})\b");
+        if (embedded.Success) cleaned = embedded.Groups[1].Value.Trim();
+
+        string[] formats =
+        {
+            "dd/MM/yyyy", "d/M/yyyy", "dd-MM-yyyy", "d-M-yyyy",
+            "dd.MM.yyyy", "d.M.yyyy", "dd/MM/yy", "d/M/yy",
+            "dd MMM yyyy", "d MMM yyyy", "dd-MMM-yyyy", "d-MMM-yyyy",
+            "dd MMMM yyyy", "d MMMM yyyy", "yyyy-MM-dd",
+        };
+
+        foreach (var format in formats)
+        {
+            if (DateTime.TryParseExact(cleaned, format,
+                System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.None, out var result))
+            {
+                // A two-digit year parsed as 1926 is a typo, not a back issue.
+                return result.Year < 1900 ? null : result.Date;
+            }
+        }
+
+        return null;
     }
 }

@@ -130,10 +130,21 @@ public class JournalSearchService
                 var pages = await _extractor.ExtractPagesAsync(issue.LocalPdfPath, ct);
                 searched++;
 
+                var unreadablePages = 0;
+
                 for (var i = 0; i < pages.Pages.Count; i++)
                 {
                     var raw = pages.Pages[i];
-                    if (string.IsNullOrWhiteSpace(raw)) continue;
+
+                    // A page with no extractable text is NOT a page that
+                    // doesn't contain the name - it is a page nobody looked at.
+                    // Skipping these silently is how a scanned issue reports
+                    // "searched, not found" when in truth nothing was read.
+                    if (string.IsNullOrWhiteSpace(raw))
+                    {
+                        unreadablePages++;
+                        continue;
+                    }
 
                     var normalized = NormalizeForSearch(raw);
 
@@ -151,6 +162,32 @@ public class JournalSearchService
                         ExcerptAround(raw, needleTokens),
                         issue.LocalPdfPath!,
                         !pages.IsExact));
+                }
+                if (unreadablePages > 0)
+                {
+                    // Counted against the number of pages actually walked, not
+                    // the PDF's declared page count. Where an extractor returns
+                    // fewer entries than PageCount, the old comparison could
+                    // never be equal, so a wholly unreadable scanned issue was
+                    // still reported as "searched" - the one outcome this whole
+                    // block exists to prevent.
+                    var walked = Math.Max(1, pages.Pages.Count);
+                    var proportion = unreadablePages * 100 / walked;
+                    notes.Add(unreadablePages >= walked
+                        ? $"Journal {issue.IssueNumber}: NONE of its {pages.PageCount} pages could be read " +
+                          "(no text layer - it is a scanned issue). It was NOT searched. Install Tesseract " +
+                          "or run the full extraction to OCR it."
+                        : $"Journal {issue.IssueNumber}: {unreadablePages} of {pages.PageCount} page(s) " +
+                          $"({proportion}%) had no readable text and were skipped.");
+
+                    if (unreadablePages >= walked)
+                    {
+                        // It contributed nothing, so it must not be counted as
+                        // searched - that count is what the user reads as
+                        // "coverage".
+                        searched--;
+                        skipped++;
+                    }
                 }
             }
             catch (Exception ex)

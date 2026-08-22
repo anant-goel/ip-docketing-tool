@@ -6,12 +6,17 @@
     Background="Transparent">
 
     <Grid>
-    <!-- Zero-sized host for the headless downloader's WebView2. It must be in
-         the visual tree to initialise, but at 1x1 and fully transparent the
-         browser runs without ever being visible. -->
-    <Grid x:Name="HiddenBrowserHost" Width="900" Height="700" Opacity="0"
+    <!-- Off-screen host for the headless downloader's WebView2.
+         BUG FIX: this used to sit at 0,0 with Opacity="0" and Canvas.ZIndex="-1",
+         and the IP India listing page was painted straight over this page while
+         a background fetch ran. WebView2 is composited in its own layer rather
+         than drawn into the XAML visual tree, so it honours NEITHER Opacity NOR
+         ZIndex - there is nothing those two properties could have done.
+         It still needs a real layout size to initialise, so it keeps one and is
+         pushed outside the window instead, which does hide it. -->
+    <Grid x:Name="HiddenBrowserHost" Width="900" Height="700"
           HorizontalAlignment="Left" VerticalAlignment="Top" IsHitTestVisible="False"
-          Canvas.ZIndex="-1" />
+          Margin="-4000,-4000,0,0" />
 
     <Grid Padding="30,24,30,30">
         <Grid.RowDefinitions>

@@ -32,6 +32,7 @@ public sealed partial class MainWindow : Window
         ConfigureWindow();
         ApplySystemBackdrop();
         ApplySavedTheme();
+        StartAmbientDrift();
 
         _clockTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
         _clockTimer.Tick += (_, _) => UpdateClock();
@@ -90,11 +91,49 @@ public sealed partial class MainWindow : Window
                 _appWindow.TitleBar.ButtonBackgroundColor = Colors.Transparent;
                 _appWindow.TitleBar.ButtonInactiveBackgroundColor = Colors.Transparent;
                 _appWindow.TitleBar.ButtonForegroundColor = Colors.White;
+
+                // Hover and press states default to an opaque grey square, which
+                // on a glass title bar reads as a hole punched in the material.
+                // A translucent white wash keeps the caption buttons on the same
+                // surface as everything else.
+                _appWindow.TitleBar.ButtonHoverBackgroundColor = Color.FromArgb(38, 255, 255, 255);
+                _appWindow.TitleBar.ButtonPressedBackgroundColor = Color.FromArgb(64, 255, 255, 255);
+                _appWindow.TitleBar.ButtonHoverForegroundColor = Colors.White;
+                _appWindow.TitleBar.ButtonPressedForegroundColor = Colors.White;
+                _appWindow.TitleBar.ButtonInactiveForegroundColor = Color.FromArgb(150, 255, 255, 255);
             }
         }
         catch
         {
             // Non-critical chrome setup
+        }
+    }
+
+    /// <summary>
+    /// Starts the slow drift of the colour field behind the glass.
+    ///
+    /// The storyboard lives in RootGrid.Resources under a key rather than a
+    /// name, because a Storyboard in a resource dictionary is addressed by key -
+    /// and looking it up here is what lets the animation stay entirely declarative
+    /// in the XAML while still being startable from code.
+    ///
+    /// Failure is swallowed on purpose. If the animation cannot start, the orbs
+    /// simply sit still and the window still looks right; taking the app down
+    /// over a decorative effect would be absurd.
+    /// </summary>
+    private void StartAmbientDrift()
+    {
+        try
+        {
+            if (RootGrid.Resources.TryGetValue("AmbientDrift", out var resource) &&
+                resource is Storyboard drift)
+            {
+                drift.Begin();
+            }
+        }
+        catch
+        {
+            // Decoration only - a still background is a fine outcome.
         }
     }
 

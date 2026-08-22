@@ -644,6 +644,9 @@ internal static class PortalScripts
         (function () {
             var rows = [];
 
+            // Stable ordering for click-by-index.
+            var allPanelLinks = Array.prototype.slice.call(document.querySelectorAll('a'));
+
             function cellText(cell) {
                 return (cell.innerText || cell.textContent || '').replace(/\s+/g, ' ').trim();
             }
@@ -685,11 +688,17 @@ internal static class PortalScripts
                         var href = link.href || '';
                         var onclick = link.getAttribute('onclick') || '';
 
+                        // Index over every panel link in document order, so a
+                        // row whose View link has no href (a postback) can still
+                        // be actioned by clicking it. Previously such rows were
+                        // dropped for having an empty url - the same defect that
+                        // hid the Journal icon links.
                         rows.push({
                             description: descIndex < cells.length ? cellText(cells[descIndex]) : '',
                             date: (dateIndex >= 0 && dateIndex < cells.length) ? cellText(cells[dateIndex]) : '',
-                            url: href,
+                            url: (href && href.indexOf('javascript:') !== 0) ? href : '',
                             onclick: onclick.slice(0, 300),
+                            linkIndex: allPanelLinks.indexOf(link),
                             linkText: cellText(link)
                         });
                     }
@@ -697,6 +706,31 @@ internal static class PortalScripts
             });
 
             return JSON.stringify({ rows: rows.slice(0, 60) });
+        })();
+        """;
+
+    /// <summary>
+    /// Clicks a panel link by its document index.
+    ///
+    /// Needed because the View links in these modals are frequently ASP.NET
+    /// postbacks with no href - there is no URL to fetch, so the only way to
+    /// obtain the file is to click it and catch the resulting download, exactly
+    /// as a person would. Payload: { index }.
+    /// </summary>
+    public const string ClickPanelLink = Helpers + """
+
+        (function () {
+            var payload = %%PAYLOAD%%;
+            var all = document.querySelectorAll('a');
+            var el = all[payload.index];
+            if (!el) return JSON.stringify({ ok: false, reason: 'no-element' });
+            try {
+                el.scrollIntoView();
+                el.click();
+            } catch (e) {
+                return JSON.stringify({ ok: false, reason: String(e) });
+            }
+            return JSON.stringify({ ok: true });
         })();
         """;
 
@@ -720,18 +754,48 @@ internal static class PortalScripts
             });
             body = body.replace(/\s+/g, ' ');
 
-            function after(label) {
-                var i = body.toLowerCase().indexOf(label);
-                if (i === -1) return '';
-                var slice = body.substring(i + label.length, i + label.length + 90);
-                // Stop at the next labelled field.
-                return slice.split(/status\s*:|sub status\s*:|as on date\s*:|trade mark no/i)[0]
-                            .replace(/^[:\s]+/, '').trim();
+            // BUG FIX 1 - the value came back with the NEXT label glued on.
+            // The old stop-list was /status\s*:|sub status\s*:|.../ and regex
+            // alternation is first-match-wins, so "Accepted & Advertised Sub
+            // Status: Registered" was cut at "Status:" inside "Sub Status:",
+            // leaving the status reading "Accepted & Advertised Sub". Longer
+            // labels are now listed FIRST so they win the alternation.
+            //
+            // BUG FIX 2 - the label was matched with indexOf on a lowercased
+            // body, so looking for 'status:' found the "Status:" inside "Sub
+            // Status:" whenever the sub-status was printed first, and the two
+            // fields swapped. Matching is now a regex anchored on a word
+            // boundary, and the spacing around the colon is no longer required
+            // to be exactly what one screenshot happened to show ("As on Date :"
+            // vs "As on Date:" both match).
+            var STOP = /(?:sub\s*status|as\s*on\s*date|trade\s*mark\s*no|application\s*no|class|proprietor|status)\s*:/i;
+
+            // rejectPrefix, where given, discards a match whose preceding text
+            // ends with it - that is how a bare "Status:" avoids matching the
+            // "Status:" inside "Sub Status:" without relying on lookbehind
+            // being available in every engine this might run in.
+            function after(labelPattern, rejectPrefix) {
+                var re = new RegExp('(?:^|[^a-z])(' + labelPattern + ')\\s*:', 'gi');
+                var m;
+                while ((m = re.exec(body)) !== null) {
+                    if (rejectPrefix) {
+                        var before = body.substring(Math.max(0, m.index - 12), m.index + 1)
+                                         .toLowerCase().replace(/\s+/g, ' ');
+                        if (before.indexOf(rejectPrefix) !== -1) continue;
+                    }
+                    var start = m.index + m[0].length;
+                    var slice = body.substring(start, start + 120);
+                    var stop = STOP.exec(slice);
+                    if (stop) slice = slice.substring(0, stop.index);
+                    slice = slice.replace(/^[:\s\-]+/, '').trim();
+                    if (slice.length > 0) return slice;
+                }
+                return '';
             }
 
-            out.asOn = after('as on date :');
-            out.subStatus = after('sub status:');
-            out.status = after('status:');
+            out.asOn = after('as\\s*on\\s*date', null);
+            out.subStatus = after('sub\\s*status', null);
+            out.status = after('status', 'sub ');
 
             // The result table itself: one row of mark details.
             ipdDocuments().forEach(function (doc) {

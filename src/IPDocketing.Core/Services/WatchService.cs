@@ -68,10 +68,25 @@ public class WatchService
             .ToList();
 
         // Alerts already raised for this issue, so a re-run never duplicates.
+        //
+        // BUG FIX: this used to project `w.PublishedMark + "|" + w.MatterId`
+        // inside the LINQ query. C# compiles `string + int` to
+        // String.Concat(object, object), which EF Core cannot translate to SQL,
+        // so the whole method threw "The LINQ expression could not be
+        // translated" the moment a watch was run - which is exactly the
+        // "TM watch does nothing" symptom. The two columns are now pulled back
+        // first and the key is built in memory, where string concatenation is
+        // just string concatenation.
+        //
+        // Keys are also compared case-insensitively and on the trimmed mark, so
+        // "SUN RISE" and "Sun Rise " no longer produce two alerts for the same
+        // pairing across re-runs.
         var existing = _db.WatchAlerts
             .Where(w => w.JournalIssueId == journalIssueId)
-            .Select(w => w.PublishedMark + "|" + w.MatterId)
-            .ToHashSet();
+            .Select(w => new { w.PublishedMark, w.MatterId })
+            .AsEnumerable()
+            .Select(w => AlertKey(w.PublishedMark, w.MatterId))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         foreach (var (mark, applicant, niceClass) in publishedMarks)
         {
@@ -87,7 +102,7 @@ public class WatchService
 
                 if (score < AlertThreshold) continue;
 
-                var key = mark + "|" + matter.Id;
+                var key = AlertKey(mark, matter.Id);
                 if (!existing.Add(key)) continue;
 
                 var reasons = new List<string>(result.Reasons);
@@ -115,6 +130,13 @@ public class WatchService
         if (created.Count > 0) _db.SaveChanges();
         return created;
     }
+
+    /// <summary>
+    /// Identity of one alert - a published mark paired with one portfolio
+    /// matter. Built in memory, never inside a LINQ-to-SQL query.
+    /// </summary>
+    private static string AlertKey(string? publishedMark, int matterId) =>
+        (publishedMark ?? string.Empty).Trim() + "|" + matterId.ToString();
 
     public List<WatchAlert> GetAllIncludingDismissed() =>
         _db.WatchAlerts.Include(w => w.Matter).Include(w => w.JournalIssue)

@@ -6,25 +6,126 @@
     Title="IP Docketing | By Anant Goel">
 
     <Grid x:Name="RootGrid" Background="Transparent">
-        <!-- Subtle color fields give the in-app Acrylic something to refract. -->
-        <Canvas IsHitTestVisible="False" Opacity="0.72">
-            <Ellipse Width="620" Height="620" Canvas.Left="-220" Canvas.Top="-260">
+
+        <Grid.Resources>
+            <!--
+                The colour field, and why it moves.
+
+                Glass is only legible as glass when there is something behind it
+                worth refracting. Two static orbs at 0.72 gave the acrylic a flat
+                gradient to sample, so every panel sampled roughly the same colour
+                every time and the result read as tinted paint no matter how
+                translucent the brush was.
+
+                Three orbs now drift and breathe on long, offset cycles. Nothing
+                here is fast enough to notice directly - the shortest leg is 28
+                seconds - but it means the colour under a card is never quite the
+                colour under the card beside it, and it shifts as you work. That
+                difference is most of what separates Apple's material from a
+                blurred screenshot.
+
+                All four animated properties are transforms, so these run on the
+                composition thread and cost no layout or paint work on the UI
+                thread. Duration and travel are the two knobs worth touching if
+                it ever feels busy.
+            -->
+            <Storyboard x:Key="AmbientDrift" RepeatBehavior="Forever" AutoReverse="True">
+                <DoubleAnimation Storyboard.TargetName="OrbAzure"
+                                 Storyboard.TargetProperty="(UIElement.RenderTransform).(CompositeTransform.TranslateX)"
+                                 From="0" To="180" Duration="0:0:34" />
+                <DoubleAnimation Storyboard.TargetName="OrbAzure"
+                                 Storyboard.TargetProperty="(UIElement.RenderTransform).(CompositeTransform.TranslateY)"
+                                 From="0" To="90" Duration="0:0:46" />
+                <DoubleAnimation Storyboard.TargetName="OrbAzure"
+                                 Storyboard.TargetProperty="(UIElement.RenderTransform).(CompositeTransform.ScaleX)"
+                                 From="1" To="1.18" Duration="0:0:40" />
+                <DoubleAnimation Storyboard.TargetName="OrbAzure"
+                                 Storyboard.TargetProperty="(UIElement.RenderTransform).(CompositeTransform.ScaleY)"
+                                 From="1" To="1.18" Duration="0:0:40" />
+
+                <DoubleAnimation Storyboard.TargetName="OrbViolet"
+                                 Storyboard.TargetProperty="(UIElement.RenderTransform).(CompositeTransform.TranslateX)"
+                                 From="0" To="-220" Duration="0:0:52" />
+                <DoubleAnimation Storyboard.TargetName="OrbViolet"
+                                 Storyboard.TargetProperty="(UIElement.RenderTransform).(CompositeTransform.TranslateY)"
+                                 From="0" To="-140" Duration="0:0:38" />
+                <DoubleAnimation Storyboard.TargetName="OrbViolet"
+                                 Storyboard.TargetProperty="(UIElement.RenderTransform).(CompositeTransform.ScaleX)"
+                                 From="1.12" To="0.94" Duration="0:0:44" />
+                <DoubleAnimation Storyboard.TargetName="OrbViolet"
+                                 Storyboard.TargetProperty="(UIElement.RenderTransform).(CompositeTransform.ScaleY)"
+                                 From="1.12" To="0.94" Duration="0:0:44" />
+
+                <DoubleAnimation Storyboard.TargetName="OrbTeal"
+                                 Storyboard.TargetProperty="(UIElement.RenderTransform).(CompositeTransform.TranslateX)"
+                                 From="0" To="140" Duration="0:0:28" />
+                <DoubleAnimation Storyboard.TargetName="OrbTeal"
+                                 Storyboard.TargetProperty="(UIElement.RenderTransform).(CompositeTransform.TranslateY)"
+                                 From="0" To="-180" Duration="0:0:50" />
+                <DoubleAnimation Storyboard.TargetName="OrbTeal"
+                                 Storyboard.TargetProperty="(UIElement.RenderTransform).(CompositeTransform.ScaleX)"
+                                 From="0.92" To="1.22" Duration="0:0:36" />
+                <DoubleAnimation Storyboard.TargetName="OrbTeal"
+                                 Storyboard.TargetProperty="(UIElement.RenderTransform).(CompositeTransform.ScaleY)"
+                                 From="0.92" To="1.22" Duration="0:0:36" />
+            </Storyboard>
+        </Grid.Resources>
+
+        <Canvas IsHitTestVisible="False" Opacity="0.9">
+            <Ellipse x:Name="OrbAzure" Width="760" Height="760"
+                     Canvas.Left="-280" Canvas.Top="-320"
+                     RenderTransformOrigin="0.5,0.5">
+                <Ellipse.RenderTransform>
+                    <CompositeTransform />
+                </Ellipse.RenderTransform>
                 <Ellipse.Fill>
                     <RadialGradientBrush>
-                        <GradientStop Color="#405B8CFF" Offset="0" />
+                        <GradientStop Color="#6B5B8CFF" Offset="0" />
+                        <GradientStop Color="#2E5B8CFF" Offset="0.55" />
                         <GradientStop Color="#005B8CFF" Offset="1" />
                     </RadialGradientBrush>
                 </Ellipse.Fill>
             </Ellipse>
-            <Ellipse Width="760" Height="760" Canvas.Left="900" Canvas.Top="360">
+
+            <Ellipse x:Name="OrbViolet" Width="880" Height="880"
+                     Canvas.Left="920" Canvas.Top="300"
+                     RenderTransformOrigin="0.5,0.5">
+                <Ellipse.RenderTransform>
+                    <CompositeTransform />
+                </Ellipse.RenderTransform>
                 <Ellipse.Fill>
                     <RadialGradientBrush>
-                        <GradientStop Color="#318A7DFF" Offset="0" />
+                        <GradientStop Color="#5E8A7DFF" Offset="0" />
+                        <GradientStop Color="#268A7DFF" Offset="0.58" />
                         <GradientStop Color="#008A7DFF" Offset="1" />
                     </RadialGradientBrush>
                 </Ellipse.Fill>
             </Ellipse>
+
+            <!-- A third, cooler pole. Two orbs of similar hue average out to one
+                 wash; a third at a distance is what keeps the field from looking
+                 like a single gradient. -->
+            <Ellipse x:Name="OrbTeal" Width="620" Height="620"
+                     Canvas.Left="380" Canvas.Top="620"
+                     RenderTransformOrigin="0.5,0.5">
+                <Ellipse.RenderTransform>
+                    <CompositeTransform />
+                </Ellipse.RenderTransform>
+                <Ellipse.Fill>
+                    <RadialGradientBrush>
+                        <GradientStop Color="#4A35D0B8" Offset="0" />
+                        <GradientStop Color="#1C35D0B8" Offset="0.6" />
+                        <GradientStop Color="#0035D0B8" Offset="1" />
+                    </RadialGradientBrush>
+                </Ellipse.Fill>
+            </Ellipse>
         </Canvas>
+
+        <!-- The band of light along the top edge of the window, where a real
+             sheet of glass catches the sky. Cheap, static, and does more for the
+             "pane of glass" read than any amount of extra blur. -->
+        <Rectangle Height="220" VerticalAlignment="Top" IsHitTestVisible="False"
+                   Fill="{StaticResource VibrantSheenBrush}" Opacity="0.55" />
 
         <Grid>
             <Grid.RowDefinitions>
@@ -122,9 +223,9 @@
                 </NavigationView.MenuItems>
 
                 <NavigationView.PaneFooter>
-                    <Border Margin="8,12,8,14" Padding="11,9" CornerRadius="12"
+                    <Border Margin="8,12,8,14" Padding="11,9" CornerRadius="14"
                             Background="{ThemeResource GlassInputBrush}"
-                            BorderBrush="{ThemeResource GlassHairlineBrush}" BorderThickness="1">
+                            BorderBrush="{StaticResource VibrantRimBrush}" BorderThickness="1.25">
                         <StackPanel Orientation="Horizontal" Spacing="8">
                             <Ellipse Width="7" Height="7" Fill="{StaticResource SuccessBrush}" VerticalAlignment="Center" />
                             <TextBlock Text="Encrypted local workspace" FontSize="11"
@@ -140,7 +241,7 @@
                         <RowDefinition Height="*" />
                     </Grid.RowDefinitions>
 
-                    <Border Margin="12,8,16,8" Style="{StaticResource GlassPanelStyle}" CornerRadius="16">
+                    <Border Margin="12,8,16,8" Style="{StaticResource VibrantPanelStyle}" CornerRadius="18">
                         <Grid Padding="16,0" ColumnSpacing="16">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
@@ -211,7 +312,21 @@
                         </InfoBar.ActionButton>
                     </InfoBar>
 
-                    <Frame x:Name="ContentFrame" Grid.Row="2" Background="Transparent" />
+                    <Frame x:Name="ContentFrame" Grid.Row="2" Background="Transparent">
+                        <!-- Pages slide and fade in rather than snapping. On a
+                             translucent shell a hard cut is jarring: the whole
+                             window is one continuous surface, so content should
+                             arrive onto it rather than replace it. -->
+                        <Frame.ContentTransitions>
+                            <TransitionCollection>
+                                <NavigationThemeTransition>
+                                    <NavigationThemeTransition.DefaultNavigationTransitionInfo>
+                                        <SlideNavigationTransitionInfo Effect="FromRight" />
+                                    </NavigationThemeTransition.DefaultNavigationTransitionInfo>
+                                </NavigationThemeTransition>
+                            </TransitionCollection>
+                        </Frame.ContentTransitions>
+                    </Frame>
                 </Grid>
             </NavigationView>
         </Grid>

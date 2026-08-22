@@ -1,0 +1,374 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!--
+        VIBRANCY LAYER
+
+        Retuning the app's own Glass* brushes only got us so far, because most of
+        what fills the window is not painted by them. NavigationView, ContentDialog,
+        TextBox, ComboBox, ListView, Expander and InfoBar each paint themselves from
+        WinUI's own theme resources, and every one of those defaults to an opaque
+        or near-opaque fill. That is where the matte finish was actually coming
+        from: the glass panels were translucent, and then a solid navigation pane,
+        a solid search box and solid list rows sat on top of them.
+
+        This dictionary redefines those system keys as translucent fills so the
+        backdrop reaches the whole window rather than the few Borders that opted
+        in. It is merged LAST in App.xaml, so it wins over both XamlControlsResources
+        and the two Liquid Glass dictionaries.
+
+        Two rules were followed throughout:
+
+          1. Backgrounds get transparency; FOREGROUNDS do not. Text, icons and
+             borders keep their opaque colours, because contrast is what makes
+             translucency readable rather than merely pretty.
+
+          2. Anywhere WinUI inverts a foreground alongside a background - the
+             focused TextBox is the notable one, where the default flips to a
+             near-white fill with dark text - the matching foreground is
+             overridden too. Changing only the background there is how you end
+             up with dark grey text on a dark translucent field.
+
+        HighContrast is deliberately mapped straight back to the system colours.
+        Someone using a high-contrast theme has asked the OS for maximum
+        legibility, and quietly serving them translucency instead would override
+        an accessibility setting with a decorative preference.
+    -->
+
+    <ResourceDictionary.ThemeDictionaries>
+
+        <!-- ============================ DARK ============================ -->
+        <ResourceDictionary x:Key="Dark">
+
+            <!-- Navigation shell. The pane was the single largest matte area in
+                 the window; making it transparent lets the colour field and the
+                 desktop run edge to edge behind the whole chrome. -->
+            <SolidColorBrush x:Key="NavigationViewDefaultPaneBackground" Color="Transparent" />
+            <SolidColorBrush x:Key="NavigationViewExpandedPaneBackground" Color="Transparent" />
+            <SolidColorBrush x:Key="NavigationViewContentBackground" Color="Transparent" />
+            <SolidColorBrush x:Key="NavigationViewContentGridBorderBrush" Color="#1FFFFFFF" />
+            <SolidColorBrush x:Key="NavigationViewItemSeparatorForeground" Color="#1AFFFFFF" />
+
+            <!-- Generic surface fills used by cards, list backplates and most
+                 "grouped content" containers across WinUI. -->
+            <SolidColorBrush x:Key="LayerFillColorDefaultBrush" Color="#1FFFFFFF" />
+            <SolidColorBrush x:Key="LayerFillColorAltBrush" Color="#14FFFFFF" />
+            <SolidColorBrush x:Key="LayerOnAcrylicFillColorDefaultBrush" Color="#14FFFFFF" />
+            <SolidColorBrush x:Key="CardBackgroundFillColorDefaultBrush" Color="#18FFFFFF" />
+            <SolidColorBrush x:Key="CardBackgroundFillColorSecondaryBrush" Color="#12FFFFFF" />
+            <SolidColorBrush x:Key="CardStrokeColorDefaultBrush" Color="#2EFFFFFF" />
+
+            <!-- Control fills - buttons, toggles, spin boxes, anything using the
+                 standard control chrome rather than the app's own button style. -->
+            <SolidColorBrush x:Key="ControlFillColorDefaultBrush" Color="#1AFFFFFF" />
+            <SolidColorBrush x:Key="ControlFillColorSecondaryBrush" Color="#24FFFFFF" />
+            <SolidColorBrush x:Key="ControlFillColorTertiaryBrush" Color="#0FFFFFFF" />
+            <SolidColorBrush x:Key="ControlFillColorInputActiveBrush" Color="#26FFFFFF" />
+            <SolidColorBrush x:Key="ControlAltFillColorSecondaryBrush" Color="#14FFFFFF" />
+            <SolidColorBrush x:Key="ControlAltFillColorTertiaryBrush" Color="#1FFFFFFF" />
+            <SolidColorBrush x:Key="SubtleFillColorSecondaryBrush" Color="#16FFFFFF" />
+            <SolidColorBrush x:Key="SubtleFillColorTertiaryBrush" Color="#0EFFFFFF" />
+
+            <!-- Text inputs. TextControlBackgroundFocused normally flips to a
+                 near-solid light fill with dark text; both halves are replaced
+                 here so a focused box stays glass AND stays readable. -->
+            <SolidColorBrush x:Key="TextControlBackground" Color="#16FFFFFF" />
+            <SolidColorBrush x:Key="TextControlBackgroundPointerOver" Color="#20FFFFFF" />
+            <SolidColorBrush x:Key="TextControlBackgroundFocused" Color="#2AFFFFFF" />
+            <SolidColorBrush x:Key="TextControlBackgroundDisabled" Color="#0AFFFFFF" />
+            <SolidColorBrush x:Key="TextControlForeground" Color="#FFF7F8FA" />
+            <SolidColorBrush x:Key="TextControlForegroundPointerOver" Color="#FFF7F8FA" />
+            <SolidColorBrush x:Key="TextControlForegroundFocused" Color="#FFFFFFFF" />
+            <SolidColorBrush x:Key="TextControlPlaceholderForeground" Color="#FF8B95A8" />
+            <SolidColorBrush x:Key="TextControlPlaceholderForegroundPointerOver" Color="#FF9EA8BA" />
+            <SolidColorBrush x:Key="TextControlPlaceholderForegroundFocused" Color="#FF9EA8BA" />
+            <SolidColorBrush x:Key="TextControlBorderBrush" Color="#33FFFFFF" />
+            <SolidColorBrush x:Key="TextControlBorderBrushPointerOver" Color="#4DFFFFFF" />
+            <SolidColorBrush x:Key="TextControlButtonBackground" Color="Transparent" />
+            <SolidColorBrush x:Key="TextControlButtonBackgroundPointerOver" Color="#1FFFFFFF" />
+            <SolidColorBrush x:Key="TextControlButtonForeground" Color="#FF9EA8BA" />
+            <SolidColorBrush x:Key="TextControlButtonForegroundPointerOver" Color="#FFF7F8FA" />
+
+            <!-- Pickers and combos. -->
+            <SolidColorBrush x:Key="ComboBoxBackground" Color="#16FFFFFF" />
+            <SolidColorBrush x:Key="ComboBoxBackgroundPointerOver" Color="#22FFFFFF" />
+            <SolidColorBrush x:Key="ComboBoxBackgroundPressed" Color="#2AFFFFFF" />
+            <SolidColorBrush x:Key="ComboBoxBorderBrush" Color="#33FFFFFF" />
+            <SolidColorBrush x:Key="ComboBoxBorderBrushPointerOver" Color="#4DFFFFFF" />
+            <SolidColorBrush x:Key="CalendarDatePickerBackground" Color="#16FFFFFF" />
+            <SolidColorBrush x:Key="CalendarDatePickerBackgroundPointerOver" Color="#22FFFFFF" />
+            <SolidColorBrush x:Key="CalendarDatePickerBorderBrush" Color="#33FFFFFF" />
+            <SolidColorBrush x:Key="DatePickerButtonBackground" Color="#16FFFFFF" />
+            <SolidColorBrush x:Key="DatePickerButtonBackgroundPointerOver" Color="#22FFFFFF" />
+            <SolidColorBrush x:Key="DatePickerButtonBackgroundPressed" Color="#2AFFFFFF" />
+            <SolidColorBrush x:Key="DatePickerButtonBorderBrush" Color="#33FFFFFF" />
+            <SolidColorBrush x:Key="TimePickerButtonBackground" Color="#16FFFFFF" />
+            <SolidColorBrush x:Key="TimePickerButtonBackgroundPointerOver" Color="#22FFFFFF" />
+
+            <!-- List rows. Selection reads as a lit pane of glass rather than a
+                 painted bar - it brightens rather than covering. -->
+            <SolidColorBrush x:Key="ListViewItemBackground" Color="Transparent" />
+            <SolidColorBrush x:Key="ListViewItemBackgroundPointerOver" Color="#16FFFFFF" />
+            <SolidColorBrush x:Key="ListViewItemBackgroundPressed" Color="#22FFFFFF" />
+            <SolidColorBrush x:Key="ListViewItemBackgroundSelected" Color="#26FFFFFF" />
+            <SolidColorBrush x:Key="ListViewItemBackgroundSelectedPointerOver" Color="#33FFFFFF" />
+            <SolidColorBrush x:Key="ListViewItemBackgroundSelectedPressed" Color="#3AFFFFFF" />
+            <SolidColorBrush x:Key="GridViewItemBackgroundSelected" Color="#26FFFFFF" />
+
+            <!-- Expander and InfoBar, both otherwise solid slabs. -->
+            <SolidColorBrush x:Key="ExpanderHeaderBackground" Color="#16FFFFFF" />
+            <SolidColorBrush x:Key="ExpanderContentBackground" Color="#0EFFFFFF" />
+            <SolidColorBrush x:Key="ExpanderHeaderBorderBrush" Color="#2EFFFFFF" />
+            <SolidColorBrush x:Key="ExpanderContentBorderBrush" Color="#2EFFFFFF" />
+            <SolidColorBrush x:Key="InfoBarInformationalSeverityBackgroundBrush" Color="#2D5B8CFF" />
+            <SolidColorBrush x:Key="InfoBarWarningSeverityBackgroundBrush" Color="#33FFAA24" />
+            <SolidColorBrush x:Key="InfoBarErrorSeverityBackgroundBrush" Color="#33FF5B52" />
+            <SolidColorBrush x:Key="InfoBarSuccessSeverityBackgroundBrush" Color="#3335D071" />
+            <SolidColorBrush x:Key="InfoBarBorderBrush" Color="#33FFFFFF" />
+
+            <!-- Dialogs and flyouts. These float over content, so they keep more
+                 body than a panel does - a see-through dialog over a dense table
+                 is unreadable - and the smoke behind is deepened to compensate. -->
+            <AcrylicBrush x:Key="ContentDialogBackground"
+                          TintColor="#FF141C2E"
+                          TintOpacity="0.32"
+                          TintLuminosityOpacity="0.72"
+                          FallbackColor="#F00E1420" />
+            <SolidColorBrush x:Key="ContentDialogBorderBrush" Color="#3DFFFFFF" />
+            <SolidColorBrush x:Key="ContentDialogSmokeFill" Color="#A6000000" />
+            <AcrylicBrush x:Key="FlyoutPresenterBackground"
+                          TintColor="#FF141C2E"
+                          TintOpacity="0.28"
+                          TintLuminosityOpacity="0.66"
+                          FallbackColor="#EE121A2A" />
+            <SolidColorBrush x:Key="FlyoutBorderThemeBrush" Color="#3DFFFFFF" />
+            <AcrylicBrush x:Key="MenuFlyoutPresenterBackground"
+                          TintColor="#FF141C2E"
+                          TintOpacity="0.28"
+                          TintLuminosityOpacity="0.66"
+                          FallbackColor="#EE121A2A" />
+            <SolidColorBrush x:Key="MenuFlyoutPresenterBorderBrush" Color="#3DFFFFFF" />
+            <AcrylicBrush x:Key="AutoSuggestBoxSuggestionsListBackground"
+                          TintColor="#FF141C2E"
+                          TintOpacity="0.28"
+                          TintLuminosityOpacity="0.68"
+                          FallbackColor="#EE121A2A" />
+
+            <!-- Stock buttons. The app's own button styles cover most of the
+                 UI, but ContentDialog's primary/close buttons, the InfoBar
+                 close and the NavigationView pane toggle are all stock, and
+                 each was drawing an opaque chip on top of the glass. -->
+            <SolidColorBrush x:Key="ButtonBackground" Color="#1AFFFFFF" />
+            <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#28FFFFFF" />
+            <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="#10FFFFFF" />
+            <SolidColorBrush x:Key="ButtonBackgroundDisabled" Color="#0AFFFFFF" />
+            <SolidColorBrush x:Key="ButtonBorderBrush" Color="#33FFFFFF" />
+            <SolidColorBrush x:Key="ButtonBorderBrushPointerOver" Color="#4DFFFFFF" />
+            <SolidColorBrush x:Key="ToggleButtonBackground" Color="#1AFFFFFF" />
+            <SolidColorBrush x:Key="ToggleButtonBackgroundPointerOver" Color="#28FFFFFF" />
+
+            <!-- Tooltips stay comparatively solid on purpose. They are small,
+                 transient and text-only, which is precisely the case where
+                 translucency costs legibility and buys nothing. -->
+            <AcrylicBrush x:Key="ToolTipBackground"
+                          TintColor="#FF141C2E"
+                          TintOpacity="0.30"
+                          TintLuminosityOpacity="0.84"
+                          FallbackColor="#F5121A2A" />
+
+            <!-- Scroll bars, so a rail never draws an opaque stripe across glass. -->
+            <SolidColorBrush x:Key="ScrollBarBackground" Color="Transparent" />
+            <SolidColorBrush x:Key="ScrollBarBackgroundPointerOver" Color="#14FFFFFF" />
+            <SolidColorBrush x:Key="ScrollBarTrackFill" Color="Transparent" />
+            <SolidColorBrush x:Key="ScrollBarTrackFillPointerOver" Color="#0EFFFFFF" />
+        </ResourceDictionary>
+
+        <!-- ============================ LIGHT ============================ -->
+        <ResourceDictionary x:Key="Light">
+
+            <SolidColorBrush x:Key="NavigationViewDefaultPaneBackground" Color="Transparent" />
+            <SolidColorBrush x:Key="NavigationViewExpandedPaneBackground" Color="Transparent" />
+            <SolidColorBrush x:Key="NavigationViewContentBackground" Color="Transparent" />
+            <SolidColorBrush x:Key="NavigationViewContentGridBorderBrush" Color="#22000000" />
+            <SolidColorBrush x:Key="NavigationViewItemSeparatorForeground" Color="#1A000000" />
+
+            <SolidColorBrush x:Key="LayerFillColorDefaultBrush" Color="#59FFFFFF" />
+            <SolidColorBrush x:Key="LayerFillColorAltBrush" Color="#40FFFFFF" />
+            <SolidColorBrush x:Key="LayerOnAcrylicFillColorDefaultBrush" Color="#4DFFFFFF" />
+            <SolidColorBrush x:Key="CardBackgroundFillColorDefaultBrush" Color="#66FFFFFF" />
+            <SolidColorBrush x:Key="CardBackgroundFillColorSecondaryBrush" Color="#4DFFFFFF" />
+            <SolidColorBrush x:Key="CardStrokeColorDefaultBrush" Color="#1F000000" />
+
+            <SolidColorBrush x:Key="ControlFillColorDefaultBrush" Color="#73FFFFFF" />
+            <SolidColorBrush x:Key="ControlFillColorSecondaryBrush" Color="#66FFFFFF" />
+            <SolidColorBrush x:Key="ControlFillColorTertiaryBrush" Color="#40FFFFFF" />
+            <SolidColorBrush x:Key="ControlFillColorInputActiveBrush" Color="#8CFFFFFF" />
+            <SolidColorBrush x:Key="ControlAltFillColorSecondaryBrush" Color="#0A000000" />
+            <SolidColorBrush x:Key="ControlAltFillColorTertiaryBrush" Color="#12000000" />
+            <SolidColorBrush x:Key="SubtleFillColorSecondaryBrush" Color="#0D000000" />
+            <SolidColorBrush x:Key="SubtleFillColorTertiaryBrush" Color="#08000000" />
+
+            <SolidColorBrush x:Key="TextControlBackground" Color="#4DFFFFFF" />
+            <SolidColorBrush x:Key="TextControlBackgroundPointerOver" Color="#66FFFFFF" />
+            <SolidColorBrush x:Key="TextControlBackgroundFocused" Color="#8CFFFFFF" />
+            <SolidColorBrush x:Key="TextControlBackgroundDisabled" Color="#26FFFFFF" />
+            <SolidColorBrush x:Key="TextControlForeground" Color="#FF121722" />
+            <SolidColorBrush x:Key="TextControlForegroundPointerOver" Color="#FF121722" />
+            <SolidColorBrush x:Key="TextControlForegroundFocused" Color="#FF0B0F17" />
+            <SolidColorBrush x:Key="TextControlPlaceholderForeground" Color="#FF6B7688" />
+            <SolidColorBrush x:Key="TextControlPlaceholderForegroundPointerOver" Color="#FF596579" />
+            <SolidColorBrush x:Key="TextControlPlaceholderForegroundFocused" Color="#FF596579" />
+            <SolidColorBrush x:Key="TextControlBorderBrush" Color="#2E000000" />
+            <SolidColorBrush x:Key="TextControlBorderBrushPointerOver" Color="#42000000" />
+            <SolidColorBrush x:Key="TextControlButtonBackground" Color="Transparent" />
+            <SolidColorBrush x:Key="TextControlButtonBackgroundPointerOver" Color="#14000000" />
+            <SolidColorBrush x:Key="TextControlButtonForeground" Color="#FF596579" />
+            <SolidColorBrush x:Key="TextControlButtonForegroundPointerOver" Color="#FF121722" />
+
+            <SolidColorBrush x:Key="ComboBoxBackground" Color="#4DFFFFFF" />
+            <SolidColorBrush x:Key="ComboBoxBackgroundPointerOver" Color="#66FFFFFF" />
+            <SolidColorBrush x:Key="ComboBoxBackgroundPressed" Color="#8CFFFFFF" />
+            <SolidColorBrush x:Key="ComboBoxBorderBrush" Color="#2E000000" />
+            <SolidColorBrush x:Key="ComboBoxBorderBrushPointerOver" Color="#42000000" />
+            <SolidColorBrush x:Key="CalendarDatePickerBackground" Color="#4DFFFFFF" />
+            <SolidColorBrush x:Key="CalendarDatePickerBackgroundPointerOver" Color="#66FFFFFF" />
+            <SolidColorBrush x:Key="CalendarDatePickerBorderBrush" Color="#2E000000" />
+            <SolidColorBrush x:Key="DatePickerButtonBackground" Color="#4DFFFFFF" />
+            <SolidColorBrush x:Key="DatePickerButtonBackgroundPointerOver" Color="#66FFFFFF" />
+            <SolidColorBrush x:Key="DatePickerButtonBackgroundPressed" Color="#8CFFFFFF" />
+            <SolidColorBrush x:Key="DatePickerButtonBorderBrush" Color="#2E000000" />
+            <SolidColorBrush x:Key="TimePickerButtonBackground" Color="#4DFFFFFF" />
+            <SolidColorBrush x:Key="TimePickerButtonBackgroundPointerOver" Color="#66FFFFFF" />
+
+            <SolidColorBrush x:Key="ListViewItemBackground" Color="Transparent" />
+            <SolidColorBrush x:Key="ListViewItemBackgroundPointerOver" Color="#3DFFFFFF" />
+            <SolidColorBrush x:Key="ListViewItemBackgroundPressed" Color="#59FFFFFF" />
+            <SolidColorBrush x:Key="ListViewItemBackgroundSelected" Color="#1F3F70D9" />
+            <SolidColorBrush x:Key="ListViewItemBackgroundSelectedPointerOver" Color="#2E3F70D9" />
+            <SolidColorBrush x:Key="ListViewItemBackgroundSelectedPressed" Color="#383F70D9" />
+            <SolidColorBrush x:Key="GridViewItemBackgroundSelected" Color="#1F3F70D9" />
+
+            <SolidColorBrush x:Key="ExpanderHeaderBackground" Color="#4DFFFFFF" />
+            <SolidColorBrush x:Key="ExpanderContentBackground" Color="#33FFFFFF" />
+            <SolidColorBrush x:Key="ExpanderHeaderBorderBrush" Color="#1F000000" />
+            <SolidColorBrush x:Key="ExpanderContentBorderBrush" Color="#1F000000" />
+            <SolidColorBrush x:Key="InfoBarInformationalSeverityBackgroundBrush" Color="#2D5B8CFF" />
+            <SolidColorBrush x:Key="InfoBarWarningSeverityBackgroundBrush" Color="#38FFAA24" />
+            <SolidColorBrush x:Key="InfoBarErrorSeverityBackgroundBrush" Color="#33FF5B52" />
+            <SolidColorBrush x:Key="InfoBarSuccessSeverityBackgroundBrush" Color="#3335D071" />
+            <SolidColorBrush x:Key="InfoBarBorderBrush" Color="#22000000" />
+
+            <AcrylicBrush x:Key="ContentDialogBackground"
+                          TintColor="#FFF8FAFD"
+                          TintOpacity="0.34"
+                          TintLuminosityOpacity="0.80"
+                          FallbackColor="#F2F8FAFD" />
+            <SolidColorBrush x:Key="ContentDialogBorderBrush" Color="#2E000000" />
+            <SolidColorBrush x:Key="ContentDialogSmokeFill" Color="#59000000" />
+            <AcrylicBrush x:Key="FlyoutPresenterBackground"
+                          TintColor="#FFF8FAFD"
+                          TintOpacity="0.30"
+                          TintLuminosityOpacity="0.76"
+                          FallbackColor="#EEF8FAFD" />
+            <SolidColorBrush x:Key="FlyoutBorderThemeBrush" Color="#2E000000" />
+            <AcrylicBrush x:Key="MenuFlyoutPresenterBackground"
+                          TintColor="#FFF8FAFD"
+                          TintOpacity="0.30"
+                          TintLuminosityOpacity="0.76"
+                          FallbackColor="#EEF8FAFD" />
+            <SolidColorBrush x:Key="MenuFlyoutPresenterBorderBrush" Color="#2E000000" />
+            <AcrylicBrush x:Key="AutoSuggestBoxSuggestionsListBackground"
+                          TintColor="#FFF8FAFD"
+                          TintOpacity="0.30"
+                          TintLuminosityOpacity="0.78"
+                          FallbackColor="#EEF8FAFD" />
+
+            <SolidColorBrush x:Key="ButtonBackground" Color="#73FFFFFF" />
+            <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#8CFFFFFF" />
+            <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="#59FFFFFF" />
+            <SolidColorBrush x:Key="ButtonBackgroundDisabled" Color="#33FFFFFF" />
+            <SolidColorBrush x:Key="ButtonBorderBrush" Color="#2E000000" />
+            <SolidColorBrush x:Key="ButtonBorderBrushPointerOver" Color="#42000000" />
+            <SolidColorBrush x:Key="ToggleButtonBackground" Color="#73FFFFFF" />
+            <SolidColorBrush x:Key="ToggleButtonBackgroundPointerOver" Color="#8CFFFFFF" />
+
+            <AcrylicBrush x:Key="ToolTipBackground"
+                          TintColor="#FFF8FAFD"
+                          TintOpacity="0.30"
+                          TintLuminosityOpacity="0.88"
+                          FallbackColor="#F7F8FAFD" />
+
+            <SolidColorBrush x:Key="ScrollBarBackground" Color="Transparent" />
+            <SolidColorBrush x:Key="ScrollBarBackgroundPointerOver" Color="#14000000" />
+            <SolidColorBrush x:Key="ScrollBarTrackFill" Color="Transparent" />
+            <SolidColorBrush x:Key="ScrollBarTrackFillPointerOver" Color="#0E000000" />
+        </ResourceDictionary>
+
+        <!-- ======================== HIGH CONTRAST ======================== -->
+        <!-- No translucency at all. A high-contrast theme is an accessibility
+             request from the OS, and this file has no business quietly ignoring
+             it in favour of a look. -->
+        <ResourceDictionary x:Key="HighContrast">
+            <SolidColorBrush x:Key="NavigationViewDefaultPaneBackground" Color="{ThemeResource SystemColorWindowColor}" />
+            <SolidColorBrush x:Key="NavigationViewExpandedPaneBackground" Color="{ThemeResource SystemColorWindowColor}" />
+            <SolidColorBrush x:Key="NavigationViewContentBackground" Color="{ThemeResource SystemColorWindowColor}" />
+            <SolidColorBrush x:Key="LayerFillColorDefaultBrush" Color="{ThemeResource SystemColorWindowColor}" />
+            <SolidColorBrush x:Key="CardBackgroundFillColorDefaultBrush" Color="{ThemeResource SystemColorWindowColor}" />
+            <SolidColorBrush x:Key="CardBackgroundFillColorSecondaryBrush" Color="{ThemeResource SystemColorWindowColor}" />
+            <SolidColorBrush x:Key="TextControlBackground" Color="{ThemeResource SystemColorWindowColor}" />
+            <SolidColorBrush x:Key="TextControlBackgroundPointerOver" Color="{ThemeResource SystemColorWindowColor}" />
+            <SolidColorBrush x:Key="TextControlBackgroundFocused" Color="{ThemeResource SystemColorWindowColor}" />
+            <SolidColorBrush x:Key="TextControlForeground" Color="{ThemeResource SystemColorWindowTextColor}" />
+            <SolidColorBrush x:Key="TextControlForegroundFocused" Color="{ThemeResource SystemColorWindowTextColor}" />
+            <SolidColorBrush x:Key="ComboBoxBackground" Color="{ThemeResource SystemColorWindowColor}" />
+            <SolidColorBrush x:Key="ContentDialogBackground" Color="{ThemeResource SystemColorWindowColor}" />
+            <SolidColorBrush x:Key="FlyoutPresenterBackground" Color="{ThemeResource SystemColorWindowColor}" />
+            <SolidColorBrush x:Key="MenuFlyoutPresenterBackground" Color="{ThemeResource SystemColorWindowColor}" />
+            <SolidColorBrush x:Key="AutoSuggestBoxSuggestionsListBackground" Color="{ThemeResource SystemColorWindowColor}" />
+        </ResourceDictionary>
+    </ResourceDictionary.ThemeDictionaries>
+
+    <!-- ================== SHARED GLASS GEOMETRY ================== -->
+
+    <!-- Apple's glass reads convex because the rim is not one colour: it is
+         bright where a light source would strike it and picks up a cool tint
+         where it curves away. A single flat 1px stroke never reads as depth,
+         however bright it is. -->
+    <LinearGradientBrush x:Key="VibrantRimBrush" StartPoint="0.08,0" EndPoint="0.92,1">
+        <GradientStop Color="#B8FFFFFF" Offset="0" />
+        <GradientStop Color="#3DFFFFFF" Offset="0.22" />
+        <GradientStop Color="#0FFFFFFF" Offset="0.55" />
+        <GradientStop Color="#2E8FC0FF" Offset="0.82" />
+        <GradientStop Color="#66A9CDFF" Offset="1" />
+    </LinearGradientBrush>
+
+    <!-- The thin bright band that sits just inside the top edge of a real pane
+         of glass, where the surface catches the sky. -->
+    <LinearGradientBrush x:Key="VibrantSheenBrush" StartPoint="0,0" EndPoint="0,1">
+        <GradientStop Color="#59FFFFFF" Offset="0" />
+        <GradientStop Color="#14FFFFFF" Offset="0.14" />
+        <GradientStop Color="#00FFFFFF" Offset="0.45" />
+        <GradientStop Color="#0FA9CDFF" Offset="1" />
+    </LinearGradientBrush>
+
+    <!-- Panel and card styles that layer sheen over the translucent fill. Opt in
+         by name; the existing GlassCardStyle / GlassPanelStyle are untouched so
+         nothing changes shape underneath a page that has not been revisited. -->
+    <Style x:Key="VibrantCardStyle" TargetType="Border">
+        <Setter Property="Background" Value="{ThemeResource GlassCardBrush}" />
+        <Setter Property="BorderBrush" Value="{StaticResource VibrantRimBrush}" />
+        <Setter Property="BorderThickness" Value="1.25" />
+        <Setter Property="CornerRadius" Value="24" />
+        <Setter Property="Padding" Value="22" />
+    </Style>
+
+    <Style x:Key="VibrantPanelStyle" TargetType="Border">
+        <Setter Property="Background" Value="{ThemeResource GlassPanelBrush}" />
+        <Setter Property="BorderBrush" Value="{StaticResource VibrantRimBrush}" />
+        <Setter Property="BorderThickness" Value="1.25" />
+        <Setter Property="CornerRadius" Value="20" />
+    </Style>
+
+</ResourceDictionary>

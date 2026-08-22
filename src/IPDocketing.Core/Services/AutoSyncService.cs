@@ -89,8 +89,19 @@ public class AutoSyncService : IDisposable
         _timer?.Dispose();
         // First pass shortly after launch rather than immediately, so startup
         // isn't competing with a network call and a PDF parse.
-        _timer = new Timer(async _ => await RunOnceAsync(), null,
-            TimeSpan.FromMinutes(2), Interval);
+        // The callback is wrapped because a Timer callback is `void`: any
+        // exception escaping it - including one thrown before RunOnceAsync's own
+        // try block, e.g. by the semaphore - becomes an unobserved exception on
+        // a thread-pool thread and takes the whole app down with no message.
+        _timer = new Timer(async _ =>
+        {
+            try { await RunOnceAsync(); }
+            catch (Exception ex)
+            {
+                LastStatus = $"Scheduled sync failed: {ex.Message}";
+                try { Progress?.Invoke(LastStatus); } catch { }
+            }
+        }, null, TimeSpan.FromMinutes(2), Interval);
     }
 
     public void Stop()

@@ -50,10 +50,23 @@ public sealed class HeadlessJournalDownloader : IDisposable
     /// <summary>Progress messages, raised on the UI thread.</summary>
     public event Action<string>? Progress;
 
+    /// <summary>Where the host is parked when the browser is meant to be unseen.</summary>
+    public static readonly Thickness OffScreen = new(-4000, -4000, 0, 0);
+
     /// <summary>
-    /// The host panel must be in the visual tree for WebView2 to initialise,
-    /// but it can be zero-sized and transparent - which is how this stays
-    /// invisible while still being a real browser.
+    /// The host panel must be in the visual tree, and at a real layout size, for
+    /// WebView2 to initialise.
+    ///
+    /// BUG FIX: hiding it used to mean Opacity = 0 on both the host and the
+    /// browser. WebView2 does not render into the XAML visual tree - it is
+    /// composited in a layer of its own - so it ignores Opacity entirely, and
+    /// ignores Canvas.ZIndex with it. The result was the IP India listing page
+    /// painted straight over the Journal page during every background fetch.
+    ///
+    /// Position is the one thing the composited layer does follow, so the host
+    /// is parked off the top-left of the window instead. That genuinely hides
+    /// it, and costs nothing: the control still has its 900x700 layout box and
+    /// still initialises.
     /// </summary>
     public HeadlessJournalDownloader(Panel host, bool visible = false)
     {
@@ -65,22 +78,28 @@ public sealed class HeadlessJournalDownloader : IDisposable
         {
             Width = 900,
             Height = 700,
-            // Visible mode exists because watching it fail is far faster than
-            // inferring the failure from a log. Hidden is the default.
-            Opacity = visible ? 1 : 0,
             IsHitTestVisible = visible
         };
 
         _host.Children.Add(_browser);
 
+        _host.Width = 900;
+        _host.Height = 700;
+        _host.IsHitTestVisible = visible;
+
         if (visible)
         {
-            _host.Width = 900;
-            _host.Height = 700;
-            _host.Opacity = 1;
-            _host.IsHitTestVisible = true;
+            // Visible mode exists because watching it fail is far faster than
+            // inferring the failure from a log. Hidden is the default.
+            _host.Margin = new Thickness(0);
             _host.HorizontalAlignment = HorizontalAlignment.Center;
             _host.VerticalAlignment = VerticalAlignment.Center;
+        }
+        else
+        {
+            _host.Margin = OffScreen;
+            _host.HorizontalAlignment = HorizontalAlignment.Left;
+            _host.VerticalAlignment = VerticalAlignment.Top;
         }
     }
 
@@ -396,6 +415,13 @@ public sealed class HeadlessJournalDownloader : IDisposable
 
             _host.Children.Remove(_browser);
             _browser.Close();
+
+            // Park the host again so a visible diagnostic run never leaves a
+            // 900x700 hole in the middle of the page after it finishes.
+            _host.Margin = OffScreen;
+            _host.IsHitTestVisible = false;
+            _host.HorizontalAlignment = HorizontalAlignment.Left;
+            _host.VerticalAlignment = VerticalAlignment.Top;
         }
         catch
         {

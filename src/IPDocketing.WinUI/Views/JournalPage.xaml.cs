@@ -473,7 +473,14 @@ public sealed partial class JournalPage : Page
             downloader?.Dispose();
 
             // Put the host back out of sight after a visible diagnostic run.
-            HiddenBrowserHost.Opacity = 0;
+            //
+            // BUG FIX: this set Opacity = 0, which does nothing to a WebView2 -
+            // it is composited outside the XAML visual tree and honours neither
+            // Opacity nor ZIndex, which is why the IP India page stayed painted
+            // over this one. Moving the host off-screen is what actually hides
+            // it. Dispose does the same thing; this is belt and braces for the
+            // path where the downloader was never constructed.
+            HiddenBrowserHost.Margin = HeadlessJournalDownloader.OffScreen;
             HiddenBrowserHost.IsHitTestVisible = false;
             HiddenBrowserHost.HorizontalAlignment = Microsoft.UI.Xaml.HorizontalAlignment.Left;
             HiddenBrowserHost.VerticalAlignment = Microsoft.UI.Xaml.VerticalAlignment.Top;
@@ -663,12 +670,37 @@ public sealed partial class JournalPage : Page
                         Notes = $"Downloaded {link.ClassRangeLabel}"
                     });
                 }
-                else if (string.IsNullOrWhiteSpace(existing.LocalPdfPath))
+                else
                 {
-                    existing.LocalPdfPath = path;
-                    existing.PdfSizeBytes = info.Length;
-                    existing.DownloadedUtc = DateTime.UtcNow;
-                    existing.Url = link.PdfUrl;
+                    // BUG FIX: this only recorded a PDF when the issue had none
+                    // on record, so downloading a second class range for an
+                    // issue you had already fetched saved the file to disk and
+                    // then dropped it - and if the first recorded file had since
+                    // been deleted or moved, the issue kept pointing at a path
+                    // that no longer existed and the name search skipped it as
+                    // "not downloaded".
+                    //
+                    // A JournalIssue row carries one LocalPdfPath, so the newest
+                    // readable file wins, but every downloaded range is now
+                    // listed in the notes rather than silently forgotten.
+                    var previous = existing.LocalPdfPath;
+                    var previousMissing = string.IsNullOrWhiteSpace(previous) ||
+                                          !System.IO.File.Exists(previous);
+
+                    if (previousMissing)
+                    {
+                        existing.LocalPdfPath = path;
+                        existing.PdfSizeBytes = info.Length;
+                        existing.DownloadedUtc = DateTime.UtcNow;
+                        existing.Url = link.PdfUrl;
+                    }
+
+                    var marker = $"Downloaded {link.ClassRangeLabel}";
+                    if (existing.Notes is null || !existing.Notes.Contains(marker, StringComparison.OrdinalIgnoreCase))
+                        existing.Notes = string.IsNullOrWhiteSpace(existing.Notes)
+                            ? marker
+                            : existing.Notes + "; " + marker;
+
                     App.Database.SaveChanges();
                 }
 

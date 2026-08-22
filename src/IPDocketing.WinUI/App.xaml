@@ -13,6 +13,13 @@
                      /third_party. Loaded after the base dictionary so the
                      refined bezel/specular tokens layer on top of it. -->
                 <ResourceDictionary Source="Themes/LiquidGlassMerged.xaml" />
+                <!-- Merged last so it wins over XamlControlsResources and over
+                     both dictionaries above. It redefines the WinUI system
+                     brushes that paint NavigationView, ContentDialog, TextBox,
+                     ComboBox, ListView, Expander and InfoBar - all of which
+                     default to opaque fills, and all of which were sitting on
+                     top of the translucent glass panels and flattening them. -->
+                <ResourceDictionary Source="Themes/Vibrancy.xaml" />
             </ResourceDictionary.MergedDictionaries>
         </ResourceDictionary>
     </Application.Resources>
