@@ -18,17 +18,27 @@
                  backdrop behind it was doing nothing. Dropping it to roughly a
                  third lets the desktop and the colour field actually show
                  through, which is the whole point of the material.
-                 TintOpacity comes down with it so the tint reads as a wash over
-                 what is behind rather than a fill in its own right, and the
-                 Fallback alphas follow so machines with transparency disabled
-                 degrade in the same direction instead of jumping to opaque. -->
+                 The Fallback alphas follow, so machines with transparency
+                 disabled degrade in the same direction instead of jumping to
+                 opaque. TintOpacity is handled separately below - it went down
+                 with the luminosity in the first pass and had to come back up,
+                 for the reason given there. -->
             <SolidColorBrush x:Key="GlassHairlineBrush" Color="#3DFFFFFF" />
             <SolidColorBrush x:Key="GlassSurfaceHoverBrush" Color="#1FFFFFFF" />
             <SolidColorBrush x:Key="GlassInputBrush" Color="#16FFFFFF" />
             <SolidColorBrush x:Key="GlassPanelFallbackBrush" Color="#B40E1420" />
+            <!-- TINT vs LUMINOSITY, second pass.
+                 Transparency stays exactly where it is - TintLuminosityOpacity is
+                 untouched, so the surfaces are as see-through as before. What
+                 changes is TintOpacity, which is the app's own navy laid over
+                 whatever shows through. At the first pass's values the colour
+                 field arrived almost raw, so a panel took on whichever orb sat
+                 behind it and the window lost its own identity. Raising the tint
+                 puts the navy back in charge of the colour without putting any
+                 opacity back into the material. -->
             <AcrylicBrush x:Key="GlassButtonBrush"
                           TintColor="#FF243149"
-                          TintOpacity="0.16"
+                          TintOpacity="0.28"
                           TintLuminosityOpacity="0.34"
                           FallbackColor="#A62A3446" />
             <!-- The accent button keeps more of its own colour than the neutral
@@ -42,12 +52,12 @@
                           FallbackColor="#D93F70D9" />
             <AcrylicBrush x:Key="GlassPanelBrush"
                           TintColor="#FF111827"
-                          TintOpacity="0.18"
+                          TintOpacity="0.34"
                           TintLuminosityOpacity="0.34"
                           FallbackColor="#B4101725" />
             <AcrylicBrush x:Key="GlassCardBrush"
                           TintColor="#FF172033"
-                          TintOpacity="0.14"
+                          TintOpacity="0.30"
                           TintLuminosityOpacity="0.28"
                           FallbackColor="#A6141C2E" />
             <SolidColorBrush x:Key="NavigationViewItemBackgroundSelected" Color="#33FFFFFF" />
@@ -73,7 +83,7 @@
             <SolidColorBrush x:Key="GlassPanelFallbackBrush" Color="#BFF7F9FC" />
             <AcrylicBrush x:Key="GlassButtonBrush"
                           TintColor="#FFFFFFFF"
-                          TintOpacity="0.22"
+                          TintOpacity="0.34"
                           TintLuminosityOpacity="0.48"
                           FallbackColor="#B8F5F8FC" />
             <AcrylicBrush x:Key="AccentGlassButtonBrush"
@@ -83,12 +93,12 @@
                           FallbackColor="#D95584E8" />
             <AcrylicBrush x:Key="GlassPanelBrush"
                           TintColor="#FFF6F8FC"
-                          TintOpacity="0.24"
+                          TintOpacity="0.40"
                           TintLuminosityOpacity="0.46"
                           FallbackColor="#BFF7F9FC" />
             <AcrylicBrush x:Key="GlassCardBrush"
                           TintColor="#FFFFFFFF"
-                          TintOpacity="0.18"
+                          TintOpacity="0.36"
                           TintLuminosityOpacity="0.42"
                           FallbackColor="#B8F8FAFD" />
             <SolidColorBrush x:Key="NavigationViewItemBackgroundSelected" Color="#1F3F70D9" />

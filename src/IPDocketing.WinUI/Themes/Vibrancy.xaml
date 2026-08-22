@@ -337,20 +337,20 @@
          where it curves away. A single flat 1px stroke never reads as depth,
          however bright it is. -->
     <LinearGradientBrush x:Key="VibrantRimBrush" StartPoint="0.08,0" EndPoint="0.92,1">
-        <GradientStop Color="#B8FFFFFF" Offset="0" />
-        <GradientStop Color="#3DFFFFFF" Offset="0.22" />
-        <GradientStop Color="#0FFFFFFF" Offset="0.55" />
-        <GradientStop Color="#2E8FC0FF" Offset="0.82" />
-        <GradientStop Color="#66A9CDFF" Offset="1" />
+        <GradientStop Color="#A6FFFFFF" Offset="0" />
+        <GradientStop Color="#33FFFFFF" Offset="0.22" />
+        <GradientStop Color="#0CFFFFFF" Offset="0.55" />
+        <GradientStop Color="#1F8FC0FF" Offset="0.82" />
+        <GradientStop Color="#3DA9CDFF" Offset="1" />
     </LinearGradientBrush>
 
     <!-- The thin bright band that sits just inside the top edge of a real pane
          of glass, where the surface catches the sky. -->
     <LinearGradientBrush x:Key="VibrantSheenBrush" StartPoint="0,0" EndPoint="0,1">
-        <GradientStop Color="#59FFFFFF" Offset="0" />
-        <GradientStop Color="#14FFFFFF" Offset="0.14" />
-        <GradientStop Color="#00FFFFFF" Offset="0.45" />
-        <GradientStop Color="#0FA9CDFF" Offset="1" />
+        <GradientStop Color="#40FFFFFF" Offset="0" />
+        <GradientStop Color="#0EFFFFFF" Offset="0.14" />
+        <GradientStop Color="#00FFFFFF" Offset="0.5" />
+        <GradientStop Color="#00A9CDFF" Offset="1" />
     </LinearGradientBrush>
 
     <!-- Panel and card styles that layer sheen over the translucent fill. Opt in

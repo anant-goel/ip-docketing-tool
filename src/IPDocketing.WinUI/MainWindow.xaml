@@ -71,32 +71,46 @@
             </Storyboard>
         </Grid.Resources>
 
-        <Canvas IsHitTestVisible="False" Opacity="0.9">
-            <Ellipse x:Name="OrbAzure" Width="760" Height="760"
-                     Canvas.Left="-280" Canvas.Top="-320"
+        <!-- TONED DOWN.
+             The first pass had these at 0.9 with peak alphas around 0x6B, which
+             was fine while the surfaces above them were nearly opaque and wrong
+             the moment they were not. With the panels genuinely translucent the
+             field stopped being something glass refracts and became the thing
+             you actually look at - big saturated blobs of blue, violet and teal
+             sitting in the middle of the content area.
+
+             The field's job is to give the material something to vary over, and
+             it does that at a fraction of this strength. Peak alpha is now around
+             0x24 with the canvas at 0.42, the orbs are larger and pushed toward
+             the window corners so their centres sit outside the reading area, and
+             the teal is pulled most of the way back to slate - it was the loudest
+             of the three and the furthest from the app's navy. -->
+        <Canvas IsHitTestVisible="False" Opacity="0.42">
+            <Ellipse x:Name="OrbAzure" Width="1180" Height="1180"
+                     Canvas.Left="-520" Canvas.Top="-620"
                      RenderTransformOrigin="0.5,0.5">
                 <Ellipse.RenderTransform>
                     <CompositeTransform />
                 </Ellipse.RenderTransform>
                 <Ellipse.Fill>
                     <RadialGradientBrush>
-                        <GradientStop Color="#6B5B8CFF" Offset="0" />
-                        <GradientStop Color="#2E5B8CFF" Offset="0.55" />
+                        <GradientStop Color="#265B8CFF" Offset="0" />
+                        <GradientStop Color="#0E5B8CFF" Offset="0.5" />
                         <GradientStop Color="#005B8CFF" Offset="1" />
                     </RadialGradientBrush>
                 </Ellipse.Fill>
             </Ellipse>
 
-            <Ellipse x:Name="OrbViolet" Width="880" Height="880"
-                     Canvas.Left="920" Canvas.Top="300"
+            <Ellipse x:Name="OrbViolet" Width="1320" Height="1320"
+                     Canvas.Left="1080" Canvas.Top="420"
                      RenderTransformOrigin="0.5,0.5">
                 <Ellipse.RenderTransform>
                     <CompositeTransform />
                 </Ellipse.RenderTransform>
                 <Ellipse.Fill>
                     <RadialGradientBrush>
-                        <GradientStop Color="#5E8A7DFF" Offset="0" />
-                        <GradientStop Color="#268A7DFF" Offset="0.58" />
+                        <GradientStop Color="#218A7DFF" Offset="0" />
+                        <GradientStop Color="#0C8A7DFF" Offset="0.52" />
                         <GradientStop Color="#008A7DFF" Offset="1" />
                     </RadialGradientBrush>
                 </Ellipse.Fill>
@@ -104,18 +118,24 @@
 
             <!-- A third, cooler pole. Two orbs of similar hue average out to one
                  wash; a third at a distance is what keeps the field from looking
-                 like a single gradient. -->
-            <Ellipse x:Name="OrbTeal" Width="620" Height="620"
-                     Canvas.Left="380" Canvas.Top="620"
+                 like a single gradient.
+
+                 It was a saturated teal (#35D0B8), which is nowhere in this app's
+                 palette and read as a green blob parked under the content. It is
+                 now a desaturated steel that is barely a hue at all - it still
+                 breaks up the other two, which is its whole job, without
+                 announcing itself. -->
+            <Ellipse x:Name="OrbTeal" Width="1020" Height="1020"
+                     Canvas.Left="220" Canvas.Top="760"
                      RenderTransformOrigin="0.5,0.5">
                 <Ellipse.RenderTransform>
                     <CompositeTransform />
                 </Ellipse.RenderTransform>
                 <Ellipse.Fill>
                     <RadialGradientBrush>
-                        <GradientStop Color="#4A35D0B8" Offset="0" />
-                        <GradientStop Color="#1C35D0B8" Offset="0.6" />
-                        <GradientStop Color="#0035D0B8" Offset="1" />
+                        <GradientStop Color="#1C6E9BC4" Offset="0" />
+                        <GradientStop Color="#0A6E9BC4" Offset="0.55" />
+                        <GradientStop Color="#006E9BC4" Offset="1" />
                     </RadialGradientBrush>
                 </Ellipse.Fill>
             </Ellipse>
@@ -124,8 +144,8 @@
         <!-- The band of light along the top edge of the window, where a real
              sheet of glass catches the sky. Cheap, static, and does more for the
              "pane of glass" read than any amount of extra blur. -->
-        <Rectangle Height="220" VerticalAlignment="Top" IsHitTestVisible="False"
-                   Fill="{StaticResource VibrantSheenBrush}" Opacity="0.55" />
+        <Rectangle Height="180" VerticalAlignment="Top" IsHitTestVisible="False"
+                   Fill="{StaticResource VibrantSheenBrush}" Opacity="0.26" />
 
         <Grid>
             <Grid.RowDefinitions>
