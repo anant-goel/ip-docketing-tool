@@ -209,6 +209,157 @@ public sealed partial class JournalPage : Page
     /// by doing what a person does - running the JavaScript and receiving a
     /// file - which WebView2 then hands us with a settable destination path.
     /// </summary>
+    /// <summary>
+    /// Reports what this page can actually reach, step by step.
+    ///
+    /// Ten rounds of fixes have gone out without a single confirmed
+    /// observation of where the Journal pipeline breaks, and every attempt to
+    /// infer it from a screenshot has been wrong at least once. This replaces
+    /// inference with measurement: it checks each link in the chain in order
+    /// and reports the first one that fails, with the evidence attached.
+    /// </summary>
+    private async void SelfTest_Click(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
+    {
+        var report = new System.Text.StringBuilder();
+        report.AppendLine("JOURNAL PIPELINE SELF-TEST");
+        report.AppendLine($"Run {DateTime.Now:dd MMM yyyy HH:mm}");
+        report.AppendLine(new string('-', 60));
+        report.AppendLine();
+
+        // 1. Build identity - confirms which binary is actually running.
+        var assembly = System.Reflection.Assembly.GetExecutingAssembly();
+        report.AppendLine($"1. Build");
+        report.AppendLine($"   Version : {assembly.GetName().Version}");
+        try
+        {
+            var exe = System.Diagnostics.Process.GetCurrentProcess().MainModule?.FileName;
+            if (exe is not null)
+                report.AppendLine($"   Built   : {System.IO.File.GetLastWriteTime(exe):dd MMM yyyy HH:mm}");
+        }
+        catch { }
+        report.AppendLine($"   Arch    : {System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture}");
+        report.AppendLine($"   Marker  : AutoDownload + SelfTest present (phase 51)");
+        report.AppendLine();
+
+        // 2. Network reach.
+        report.AppendLine("2. Reaching the listing page");
+        string? html = null;
+        try
+        {
+            var issues = await App.JournalFetch.FetchIssuesAsync();
+            report.AppendLine($"   OK: parsed {issues.Count} issue row(s)");
+
+            foreach (var issue in issues.Take(4))
+                report.AppendLine($"     {issue.JournalNumber}  {issue.PublicationDate:dd MMM yyyy}  " +
+                                  $"{issue.ClassLinks.Count} link(s)");
+
+            var totalLinks = issues.Sum(i => i.ClassLinks.Count);
+            report.AppendLine($"   Total links extracted across all rows: {totalLinks}");
+
+            if (totalLinks == 0)
+            {
+                report.AppendLine("   >>> THIS IS THE FAILURE. Rows parse, links do not.");
+                html = App.JournalFetch.LastEmptyRowHtml;
+            }
+        }
+        catch (Exception ex)
+        {
+            report.AppendLine($"   FAILED: {ex.GetType().Name} - {ex.Message}");
+            report.AppendLine("   >>> THIS IS THE FAILURE. The page could not be read at all.");
+        }
+        report.AppendLine();
+
+        // 3. What is on disk.
+        report.AppendLine("3. Local library");
+        var library = System.IO.Path.Combine(App.AppDataDirectory, "JournalLibrary");
+        try
+        {
+            if (!System.IO.Directory.Exists(library))
+            {
+                report.AppendLine($"   Folder does not exist yet: {library}");
+            }
+            else
+            {
+                var files = System.IO.Directory.GetFiles(library);
+                report.AppendLine($"   {files.Length} file(s) in {library}");
+                foreach (var f in files.Take(8))
+                    report.AppendLine($"     {System.IO.Path.GetFileName(f)}  " +
+                                      $"{new System.IO.FileInfo(f).Length / 1024 / 1024.0:0.0} MB");
+            }
+        }
+        catch (Exception ex)
+        {
+            report.AppendLine($"   FAILED: {ex.Message}");
+        }
+        report.AppendLine();
+
+        // 4. Database state.
+        report.AppendLine("4. Issues on record");
+        try
+        {
+            var recorded = App.Journal.GetAll();
+            report.AppendLine($"   {recorded.Count} issue(s) in the database");
+            foreach (var j in recorded.OrderByDescending(j => j.PublicationDate).Take(6))
+                report.AppendLine($"     {j.IssueNumber}  {j.PublicationDate:dd MMM yyyy}  " +
+                                  $"pdf={(string.IsNullOrWhiteSpace(j.LocalPdfPath) ? "NONE" : "yes")}  " +
+                                  $"url={(string.IsNullOrWhiteSpace(j.Url) ? "NONE" : "yes")}");
+        }
+        catch (Exception ex)
+        {
+            report.AppendLine($"   FAILED: {ex.Message}");
+        }
+        report.AppendLine();
+
+        // 5. OCR engine.
+        report.AppendLine("5. Text extraction");
+        report.AppendLine($"   Tesseract: {(App.TextExtractor?.TesseractAvailable == true ? "available" : "not found - using Windows OCR")}");
+        report.AppendLine();
+
+        if (html is not null)
+        {
+            report.AppendLine(new string('-', 60));
+            report.AppendLine("RAW HTML OF A ROW THAT PRODUCED NO LINKS");
+            report.AppendLine("(this is the single most useful thing to send back)");
+            report.AppendLine(new string('-', 60));
+            report.AppendLine(html);
+        }
+
+        var body = new TextBox
+        {
+            Text = report.ToString(),
+            IsReadOnly = true,
+            AcceptsReturn = true,
+            TextWrapping = Microsoft.UI.Xaml.TextWrapping.NoWrap,
+            FontFamily = new Microsoft.UI.Xaml.Media.FontFamily("Cascadia Mono, Consolas"),
+            FontSize = 12,
+            Height = 400,
+            Width = 620
+        };
+
+        var dialog = new ContentDialog
+        {
+            XamlRoot = XamlRoot,
+            Title = "Self-test",
+            Content = new ScrollViewer
+            {
+                Content = body,
+                MaxHeight = 420,
+                HorizontalScrollBarVisibility = ScrollBarVisibility.Auto
+            },
+            PrimaryButtonText = "Copy all",
+            CloseButtonText = "Close",
+            DefaultButton = ContentDialogButton.Primary
+        };
+
+        if (await dialog.ShowAsync() == ContentDialogResult.Primary)
+        {
+            var package = new Windows.ApplicationModel.DataTransfer.DataPackage();
+            package.SetText(report.ToString());
+            Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(package);
+            FetchStatusText.Text = "Self-test copied to the clipboard.";
+        }
+    }
+
     private async void AutoDownload_Click(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
     {
         var issuePrompt = new TextBox

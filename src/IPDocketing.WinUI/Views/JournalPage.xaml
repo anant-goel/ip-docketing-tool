@@ -31,24 +31,30 @@
                 <TextBlock Text="Weekly TMR Journal issues — track which ones you've reviewed for conflicting marks."
                            Style="{StaticResource SubtitleStyle}" Margin="0,4,0,0" />
             </StackPanel>
+            <!-- Six buttons in a non-wrapping horizontal StackPanel overflowed
+                 the window and pushed the newest ones off-screen entirely -
+                 which looks identical to "the feature was never added".
+                 Consolidated into one primary action plus a menu, so the
+                 toolbar can no longer outgrow the window. -->
             <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
-                <Button Content="Auto-download (background)" Style="{StaticResource MergedAccentButtonStyle}"
+                <Button Content="Get journal PDFs" Style="{StaticResource MergedAccentButtonStyle}"
                         Click="AutoDownload_Click"
-                        ToolTipService.ToolTip="Drives a hidden browser: clicks each class-range link and saves the PDF. Nothing is shown — you just get the result." />
-                <Button Content="Browse &amp; download issues" Style="{StaticResource MergedGlassButtonBaseStyle}"
-                        Click="BrowseIssues_Click"
-                        ToolTipService.ToolTip="Lists every issue with all its class-range PDFs. Pick and download directly - no class matching, no date box." />
-                <Button Content="Pull latest weekly issues" Style="{StaticResource MergedGlassButtonBaseStyle}"
-                        Click="PullLatest_Click"
-                        ToolTipService.ToolTip="Reads the public journal listing and logs the most recent issues with their PDF links" />
-                <Button Content="Find a name" Style="{StaticResource MergedGlassButtonBaseStyle}"
-                        Click="FindName_Click"
-                        ToolTipService.ToolTip="Search downloaded Journal PDFs for a proprietor or agent name and report the page it appears on" />
-                <Button Content="Watch report" Style="{StaticResource MergedGlassButtonBaseStyle}"
-                        Click="WatchReport_Click"
-                        ToolTipService.ToolTip="Builds the weekly watch report and opens it ready to print" />
-                <Button Content="+ Log manually" Style="{StaticResource MergedGlassButtonBaseStyle}"
-                        Click="AddIssue_Click" />
+                        ToolTipService.ToolTip="Drives a hidden browser: clicks each class-range link and saves the PDF. Nothing is shown - you just get a result log." />
+
+                <DropDownButton Content="Journal tools" Style="{StaticResource MergedGlassButtonBaseStyle}">
+                    <DropDownButton.Flyout>
+                        <MenuFlyout Placement="Bottom">
+                            <MenuFlyoutItem Text="Browse and pick files..." Click="BrowseIssues_Click" />
+                            <MenuFlyoutItem Text="Pull latest weekly issues" Click="PullLatest_Click" />
+                            <MenuFlyoutSeparator />
+                            <MenuFlyoutItem Text="Find a name in the Journal..." Click="FindName_Click" />
+                            <MenuFlyoutItem Text="Watch report..." Click="WatchReport_Click" />
+                            <MenuFlyoutSeparator />
+                            <MenuFlyoutItem Text="Log an issue manually..." Click="AddIssue_Click" />
+                            <MenuFlyoutItem Text="Self-test: what can this page reach?" Click="SelfTest_Click" />
+                        </MenuFlyout>
+                    </DropDownButton.Flyout>
+                </DropDownButton>
             </StackPanel>
         </Grid>
 
