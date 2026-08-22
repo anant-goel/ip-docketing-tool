@@ -95,15 +95,18 @@ public class JournalFetchService
 
             if (anchors is not null)
             {
+                var ordinal = 0;
                 foreach (var a in anchors)
                 {
-                    var label = HtmlEntity.DeEntitize(a.InnerText ?? "").Trim();
-                    if (label.Length == 0) continue;
-
                     var url = ResolveAnchorUrl(a);
                     if (url is null) continue;
 
-                    classLinks.Add((label, url));
+                    // The Download column uses ICON links - an <img> inside an
+                    // <a>, carrying no text. Requiring a text label discarded
+                    // every one of them, which is exactly why rows parsed while
+                    // links came back empty. A label is now derived rather than
+                    // demanded.
+                    classLinks.Add((DeriveLabel(a, ++ordinal, url), url));
                 }
             }
 
@@ -157,6 +160,53 @@ public class JournalFetchService
             .OrderByDescending(i => i.PublicationDate ?? DateTime.MinValue)
             .Take(Math.Max(1, count))
             .ToList();
+    }
+
+    /// <summary>
+    /// Works out a human-readable name for a link that may have no text at all.
+    ///
+    /// Order of preference: the anchor's own text, then title/alt/aria-label,
+    /// then the alt or title of an image inside it, then the image's filename,
+    /// then the PDF filename from the URL. Falling back to "Download {n}" is
+    /// deliberate - a link with no name is still a link, and skipping it (the
+    /// previous behaviour) loses the file entirely.
+    /// </summary>
+    private static string DeriveLabel(HtmlNode anchor, int ordinal, string url)
+    {
+        var candidates = new List<string?>
+        {
+            anchor.InnerText,
+            anchor.GetAttributeValue("title", null),
+            anchor.GetAttributeValue("alt", null),
+            anchor.GetAttributeValue("aria-label", null),
+        };
+
+        var img = anchor.SelectSingleNode(".//img");
+        if (img is not null)
+        {
+            candidates.Add(img.GetAttributeValue("alt", null));
+            candidates.Add(img.GetAttributeValue("title", null));
+
+            var src = img.GetAttributeValue("src", "") ?? "";
+            if (src.Length > 0)
+            {
+                var name = src.Split('/', '\\').LastOrDefault()?.Split('.').FirstOrDefault();
+                if (!string.IsNullOrWhiteSpace(name)) candidates.Add(name);
+            }
+        }
+
+        // A filename out of the URL is usually the most descriptive thing left.
+        var fromUrl = Regex.Match(url, @"([^/\\?#]+)\.(?:pdf|zip)", RegexOptions.IgnoreCase);
+        if (fromUrl.Success) candidates.Add(fromUrl.Groups[1].Value);
+
+        foreach (var candidate in candidates)
+        {
+            if (string.IsNullOrWhiteSpace(candidate)) continue;
+            var cleaned = Regex.Replace(HtmlEntity.DeEntitize(candidate), @"\s+", " ").Trim();
+            if (cleaned.Length is > 0 and < 120) return cleaned;
+        }
+
+        return $"Download {ordinal}";
     }
 
     /// <summary>
@@ -301,11 +351,27 @@ public class JournalFetchService
             .Select(l => l.ClassRangeLabel)
             .ToList();
 
-        return ClassLookupResult.Failure(ranges.Count == 0
-            ? $"Journal {issue.JournalNumber} ({issue.PublicationDate:dd MMM yyyy}) has no class-range PDFs at all - " +
-              $"it only carries {issue.ClassLinks.Count} notice/well-known-marks link(s)."
-            : $"Class {trademarkClass} isn't covered by Journal {issue.JournalNumber} " +
-              $"({issue.PublicationDate:dd MMM yyyy}). Its ranges are: {string.Join(", ", ranges)}.");
+        if (ranges.Count > 0)
+            return ClassLookupResult.Failure(
+                $"Class {trademarkClass} isn't covered by Journal {issue.JournalNumber} " +
+                $"({issue.PublicationDate:dd MMM yyyy}). Its ranges are: {string.Join(", ", ranges)}.");
+
+        // No label parses as a class range. That is expected when the Download
+        // column uses icon links, which carry no text describing what they
+        // contain - so which file holds which class simply cannot be known from
+        // the listing. Saying so beats implying the issue has no PDFs, and
+        // beats guessing at a file that might be the wrong classes entirely.
+        if (issue.ClassLinks.Count > 0)
+            return ClassLookupResult.Failure(
+                $"Journal {issue.JournalNumber} ({issue.PublicationDate:dd MMM yyyy}) has " +
+                $"{issue.ClassLinks.Count} download link(s), but none of them say which classes they cover " +
+                $"(they are icon links: {string.Join(", ", issue.ClassLinks.Take(4).Select(l => l.ClassRangeLabel))}). " +
+                "Class-based lookup can't work on this issue - use \"Get journal PDFs\" to fetch them all, " +
+                "then search inside them by name.");
+
+        return ClassLookupResult.Failure(
+            $"Journal {issue.JournalNumber} ({issue.PublicationDate:dd MMM yyyy}) produced no download links at all. " +
+            "Use Journal tools > Self-test to capture the raw row HTML.");
     }
 
     public sealed record ClassLookupResult(

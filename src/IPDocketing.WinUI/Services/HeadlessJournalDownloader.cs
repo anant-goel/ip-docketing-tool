@@ -228,8 +228,47 @@ public sealed class HeadlessJournalDownloader : IDisposable
         var script = $$"""
             (function () {
                 var wanted = {{JsonSerializer.Serialize(journalNumber)}};
-                var all = Array.prototype.slice.call(document.querySelectorAll('a'));
+
+                // Index over the same widened selector used when clicking, so
+                // the index recorded here still addresses the right element.
+                var all = Array.prototype.slice.call(document.querySelectorAll(
+                    'a, input[type="image"], input[type="submit"], input[type="button"], button, img[onclick]'));
                 var out = [];
+
+                function labelFor(el, ordinal) {
+                    var candidates = [
+                        (el.innerText || '').trim(),
+                        el.getAttribute('title') || '',
+                        el.getAttribute('alt') || '',
+                        el.getAttribute('aria-label') || '',
+                        el.value || ''
+                    ];
+
+                    // An <img> inside the link usually carries the only
+                    // human-readable name, in its alt or title.
+                    var img = el.querySelector ? el.querySelector('img') : null;
+                    if (img) {
+                        candidates.push(img.getAttribute('alt') || '');
+                        candidates.push(img.getAttribute('title') || '');
+                        var src = img.getAttribute('src') || '';
+                        var srcName = src.split('/').pop().split('.')[0];
+                        if (srcName) candidates.push(srcName);
+                    }
+
+                    // Last resort: a filename out of the href.
+                    var href = el.getAttribute('href') || '';
+                    var m = href.match(/([^\/\\?#]+)\.(pdf|zip)/i);
+                    if (m) candidates.push(m[1]);
+
+                    for (var c = 0; c < candidates.length; c++) {
+                        var v = (candidates[c] || '').replace(/\s+/g, ' ').trim();
+                        if (v.length > 0 && v.length < 120) return v;
+                    }
+
+                    // Named by position rather than skipped. A link with no
+                    // name is still a link.
+                    return 'Download ' + (ordinal + 1);
+                }
 
                 var rows = document.querySelectorAll('tr');
                 for (var r = 0; r < rows.length; r++) {
@@ -243,11 +282,19 @@ public sealed class HeadlessJournalDownloader : IDisposable
                     }
                     if (!isRow) continue;
 
-                    var anchors = rows[r].querySelectorAll('a');
-                    for (var a = 0; a < anchors.length; a++) {
-                        var label = (anchors[a].innerText || '').replace(/\s+/g, ' ').trim();
-                        if (label.length === 0) continue;
-                        out.push({ index: all.indexOf(anchors[a]), label: label });
+                    // The Download column holds ICON links - an <img> inside an
+                    // <a>, with no text of its own. Requiring innerText
+                    // discarded every one of them, which is why the row parsed
+                    // and the links did not. Text is now preferred but never
+                    // required; a name is derived from whatever the element
+                    // does carry.
+                    var clickables = rows[r].querySelectorAll(
+                        'a, input[type="image"], input[type="submit"], input[type="button"], button, img[onclick]');
+
+                    for (var a = 0; a < clickables.length; a++) {
+                        var el = clickables[a];
+                        var label = labelFor(el, a);
+                        out.push({ index: all.indexOf(el), label: label, tag: el.tagName });
                     }
                     break;
                 }
@@ -291,9 +338,11 @@ public sealed class HeadlessJournalDownloader : IDisposable
 
         var clickScript = $$"""
             (function () {
-                var all = document.querySelectorAll('a');
+                var all = document.querySelectorAll(
+                    'a, input[type="image"], input[type="submit"], input[type="button"], button, img[onclick]');
                 var el = all[{{link.Index}}];
                 if (!el) return "no-element";
+                el.scrollIntoView();
                 el.click();
                 return "clicked";
             })();
