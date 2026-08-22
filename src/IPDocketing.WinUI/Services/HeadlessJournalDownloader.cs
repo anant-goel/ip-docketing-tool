@@ -55,21 +55,36 @@ public sealed class HeadlessJournalDownloader : IDisposable
     /// but it can be zero-sized and transparent - which is how this stays
     /// invisible while still being a real browser.
     /// </summary>
-    public HeadlessJournalDownloader(Panel host)
+    public HeadlessJournalDownloader(Panel host, bool visible = false)
     {
         _host = host;
         _dispatcher = DispatcherQueue.GetForCurrentThread();
+        _visible = visible;
 
         _browser = new WebView2
         {
-            Width = 1,
-            Height = 1,
-            Opacity = 0,
-            IsHitTestVisible = false
+            Width = 900,
+            Height = 700,
+            // Visible mode exists because watching it fail is far faster than
+            // inferring the failure from a log. Hidden is the default.
+            Opacity = visible ? 1 : 0,
+            IsHitTestVisible = visible
         };
 
         _host.Children.Add(_browser);
+
+        if (visible)
+        {
+            _host.Width = 900;
+            _host.Height = 700;
+            _host.Opacity = 1;
+            _host.IsHitTestVisible = true;
+            _host.HorizontalAlignment = HorizontalAlignment.Center;
+            _host.VerticalAlignment = VerticalAlignment.Center;
+        }
     }
+
+    private readonly bool _visible;
 
     private void Report(string message) => Progress?.Invoke(message);
 
@@ -86,9 +101,29 @@ public sealed class HeadlessJournalDownloader : IDisposable
     {
         if (_browser.CoreWebView2 is not null) return;
 
-        // Same user-data folder as the visible browser, so a session the person
-        // has already established is reused rather than started fresh.
-        await _browser.EnsureCoreWebView2Async();
+        // BUG FIX: a 1x1 WebView2 does not reliably initialise - the control
+        // needs a real layout size, and several WebView2 builds simply never
+        // complete EnsureCoreWebView2Async on a zero-area element. It is given
+        // a genuine size here and hidden with Opacity instead, which keeps it
+        // invisible without lying to the layout system.
+        _browser.Width = 900;
+        _browser.Height = 700;
+
+        // A hang here previously looked like "background processing does
+        // nothing": no window, no error, no result. Now it fails loudly.
+        var init = _browser.EnsureCoreWebView2Async().AsTask();
+        var finished = await Task.WhenAny(init, Task.Delay(TimeSpan.FromSeconds(45)));
+
+        if (finished != init)
+            throw new InvalidOperationException(
+                "The hidden browser did not start within 45 seconds. The WebView2 runtime may be " +
+                "missing - on ARM64 it must be the ARM64 runtime. Install it from " +
+                "developer.microsoft.com/microsoft-edge/webview2.");
+
+        await init;
+
+        if (_browser.CoreWebView2 is null)
+            throw new InvalidOperationException("The hidden browser reported ready but produced no CoreWebView2.");
 
         var core = _browser.CoreWebView2;
 
@@ -128,24 +163,32 @@ public sealed class HeadlessJournalDownloader : IDisposable
             var operation = args.DownloadOperation;
             var path = args.ResultFilePath;
 
-            operation.StateChanged += (_, _) =>
-            {
-                switch (operation.State)
-                {
-                    case CoreWebView2DownloadState.Completed:
-                        _downloadDone?.TrySetResult(path);
-                        break;
+            operation.StateChanged += (_, _) => Settle(operation, path);
 
-                    case CoreWebView2DownloadState.Interrupted:
-                        _downloadDone?.TrySetResult(null);
-                        break;
-                }
-            };
+            // BUG FIX: a small or cached file can finish before this handler is
+            // attached, so StateChanged never fires again and the wait times
+            // out with "no download started" - even though the file is already
+            // on disk. Checking the current state immediately closes that race.
+            Settle(operation, path);
         }
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine($"DownloadStarting failed: {ex}");
             _downloadDone?.TrySetResult(null);
+        }
+    }
+
+    private void Settle(CoreWebView2DownloadOperation operation, string path)
+    {
+        switch (operation.State)
+        {
+            case CoreWebView2DownloadState.Completed:
+                _downloadDone?.TrySetResult(path);
+                break;
+
+            case CoreWebView2DownloadState.Interrupted:
+                _downloadDone?.TrySetResult(null);
+                break;
         }
     }
 

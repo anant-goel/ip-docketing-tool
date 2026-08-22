@@ -407,28 +407,34 @@ public sealed partial class MattersPage : Page
                 summary.AppendLine("No problems found.");
             }
 
-            var body = new TextBox
-            {
-                Text = summary.ToString(),
-                IsReadOnly = true,
-                AcceptsReturn = true,
-                TextWrapping = Microsoft.UI.Xaml.TextWrapping.Wrap,
-                FontSize = 12,
-                Height = 340,
-                Width = 520
-            };
+            // Shown through the shared report dialog, which renders long text
+            // correctly and saves a copy to disk. The fixed-height TextBox this
+            // replaces collapsed to about one line, hiding every warning the
+            // validator produced - so an import could look clean when it wasn't.
+            await IPDocketing.WinUI.Services.TextReportDialog.ShowAsync(
+                XamlRoot,
+                report.HasFatalIssues ? "Import blocked" : "Import preview",
+                summary.ToString(),
+                "importpreview");
 
-            var dialog = new ContentDialog
+            if (report.HasFatalIssues) return;
+
+            var confirm = new ContentDialog
             {
                 XamlRoot = XamlRoot,
-                Title = report.HasFatalIssues ? "Import blocked" : "Preview import",
-                Content = body,
-                PrimaryButtonText = report.HasFatalIssues ? string.Empty : "Import",
-                CloseButtonText = report.HasFatalIssues ? "Close" : "Cancel",
-                DefaultButton = ContentDialogButton.Close
+                Title = "Import now?",
+                Content = new TextBlock
+                {
+                    Text = $"{report.NewCount} new matter(s), {report.UpdateCount} update(s), " +
+                           $"{report.WarningCount} warning(s) - all listed in the preview you just saw.",
+                    TextWrapping = Microsoft.UI.Xaml.TextWrapping.Wrap
+                },
+                PrimaryButtonText = "Import",
+                CloseButtonText = "Cancel",
+                DefaultButton = ContentDialogButton.Primary
             };
 
-            if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
+            if (await confirm.ShowAsync() != ContentDialogResult.Primary) return;
 
             var (created, updated) = App.PortfolioImport.Import(report);
 

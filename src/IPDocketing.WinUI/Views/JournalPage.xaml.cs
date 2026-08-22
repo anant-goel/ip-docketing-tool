@@ -324,40 +324,8 @@ public sealed partial class JournalPage : Page
             report.AppendLine(html);
         }
 
-        var body = new TextBox
-        {
-            Text = report.ToString(),
-            IsReadOnly = true,
-            AcceptsReturn = true,
-            TextWrapping = Microsoft.UI.Xaml.TextWrapping.NoWrap,
-            FontFamily = new Microsoft.UI.Xaml.Media.FontFamily("Cascadia Mono, Consolas"),
-            FontSize = 12,
-            Height = 400,
-            Width = 620
-        };
-
-        var dialog = new ContentDialog
-        {
-            XamlRoot = XamlRoot,
-            Title = "Self-test",
-            Content = new ScrollViewer
-            {
-                Content = body,
-                MaxHeight = 420,
-                HorizontalScrollBarVisibility = ScrollBarVisibility.Auto
-            },
-            PrimaryButtonText = "Copy all",
-            CloseButtonText = "Close",
-            DefaultButton = ContentDialogButton.Primary
-        };
-
-        if (await dialog.ShowAsync() == ContentDialogResult.Primary)
-        {
-            var package = new Windows.ApplicationModel.DataTransfer.DataPackage();
-            package.SetText(report.ToString());
-            Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(package);
-            FetchStatusText.Text = "Self-test copied to the clipboard.";
-        }
+        await TextReportDialog.ShowAsync(XamlRoot, "Self-test", report.ToString(), "selftest");
+        FetchStatusText.Text = "Self-test complete - the report is also saved to the Reports folder.";
     }
 
     private async void AutoDownload_Click(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
@@ -372,13 +340,22 @@ public sealed partial class JournalPage : Page
             MinWidth = 320
         };
 
+        // Watching it run is the fastest way to find out why it isn't working -
+        // far faster than inferring the failure from a log after the fact.
+        var showBrowser = new CheckBox
+        {
+            Content = "Show the browser while it runs (for diagnosing)",
+            IsChecked = false
+        };
+
         var panel = new StackPanel { Spacing = 12, Width = 360 };
         panel.Children.Add(issuePrompt);
+        panel.Children.Add(showBrowser);
         panel.Children.Add(new TextBlock
         {
             Text = "A hidden browser opens the listing, clicks each of that issue's links, " +
-                   "and saves whatever downloads. Nothing appears on screen. Expect roughly " +
-                   "10–20 seconds per file — Journal PDFs are large.",
+                   "and saves whatever downloads. Nothing appears on screen unless you tick the box. " +
+                   "Expect roughly 10-20 seconds per file - Journal PDFs are large.",
             TextWrapping = Microsoft.UI.Xaml.TextWrapping.Wrap,
             FontSize = 11,
             Opacity = 0.65
@@ -411,7 +388,8 @@ public sealed partial class JournalPage : Page
 
         try
         {
-            downloader = new HeadlessJournalDownloader(HiddenBrowserHost);
+            var visible = showBrowser.IsChecked == true;
+            downloader = new HeadlessJournalDownloader(HiddenBrowserHost, visible);
             downloader.Progress += message =>
                 DispatcherQueue.TryEnqueue(() => FetchStatusText.Text = message);
 
@@ -493,41 +471,15 @@ public sealed partial class JournalPage : Page
         finally
         {
             downloader?.Dispose();
+
+            // Put the host back out of sight after a visible diagnostic run.
+            HiddenBrowserHost.Opacity = 0;
+            HiddenBrowserHost.IsHitTestVisible = false;
+            HiddenBrowserHost.HorizontalAlignment = Microsoft.UI.Xaml.HorizontalAlignment.Left;
+            HiddenBrowserHost.VerticalAlignment = Microsoft.UI.Xaml.VerticalAlignment.Top;
         }
 
-        var body = new TextBox
-        {
-            Text = log.ToString(),
-            IsReadOnly = true,
-            AcceptsReturn = true,
-            TextWrapping = Microsoft.UI.Xaml.TextWrapping.NoWrap,
-            FontFamily = new Microsoft.UI.Xaml.Media.FontFamily("Cascadia Mono, Consolas"),
-            FontSize = 12,
-            Height = 340,
-            Width = 560
-        };
-
-        var result = new ContentDialog
-        {
-            XamlRoot = XamlRoot,
-            Title = "Auto-download result",
-            Content = new ScrollViewer
-            {
-                Content = body,
-                MaxHeight = 360,
-                HorizontalScrollBarVisibility = ScrollBarVisibility.Auto
-            },
-            PrimaryButtonText = "Copy",
-            CloseButtonText = "Close",
-            DefaultButton = ContentDialogButton.Close
-        };
-
-        if (await result.ShowAsync() == ContentDialogResult.Primary)
-        {
-            var package = new Windows.ApplicationModel.DataTransfer.DataPackage();
-            package.SetText(log.ToString());
-            Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(package);
-        }
+        await TextReportDialog.ShowAsync(XamlRoot, "Auto-download result", log.ToString(), "autodownload");
     }
 
     private async void BrowseIssues_Click(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
@@ -553,37 +505,15 @@ public sealed partial class JournalPage : Page
             // "0 link(s)" bug survived several rounds of guessing.
             var raw = App.JournalFetch.LastEmptyRowHtml;
 
-            var body = new TextBox
-            {
-                Text = raw is null
-                    ? $"Parsed {entries.Count} row(s) from the listing, but none contained any links, " +
-                      "and no raw row could be captured."
-                    : $"Parsed {entries.Count} row(s), but none yielded a download link.\n\n" +
-                      "Raw HTML of the first row that produced nothing — please send me this:\n\n" + raw,
-                IsReadOnly = true,
-                AcceptsReturn = true,
-                TextWrapping = Microsoft.UI.Xaml.TextWrapping.Wrap,
-                FontSize = 11,
-                Height = 380,
-                Width = 560
-            };
+            var diagnostic = raw is null
+                ? $"Parsed {entries.Count} row(s) from the listing, but none contained any links, " +
+                  "and no raw row could be captured."
+                : $"Parsed {entries.Count} row(s), but none yielded a download link.\n\n" +
+                  "RAW HTML OF THE FIRST ROW THAT PRODUCED NOTHING\n" +
+                  "(this is the single most useful thing to send back)\n" +
+                  new string('-', 60) + "\n\n" + raw;
 
-            var diag = new ContentDialog
-            {
-                XamlRoot = XamlRoot,
-                Title = "No download links found",
-                Content = new ScrollViewer { Content = body, MaxHeight = 400 },
-                PrimaryButtonText = "Copy",
-                CloseButtonText = "Close",
-                DefaultButton = ContentDialogButton.Primary
-            };
-
-            if (await diag.ShowAsync() == ContentDialogResult.Primary)
-            {
-                var package = new Windows.ApplicationModel.DataTransfer.DataPackage();
-                package.SetText(body.Text);
-                Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(package);
-            }
+            await TextReportDialog.ShowAsync(XamlRoot, "No download links found", diagnostic, "linkdiag");
 
             FetchStatusText.Text = "No download links parsed. Use Copy in the dialog and send me the raw HTML.";
             return;
@@ -871,33 +801,11 @@ public sealed partial class JournalPage : Page
             foreach (var note in report.Notes.Take(12))
                 summary.AppendLine("  " + note);
 
-            var body = new TextBox
-            {
-                Text = summary.ToString(),
-                IsReadOnly = true,
-                AcceptsReturn = true,
-                TextWrapping = Microsoft.UI.Xaml.TextWrapping.Wrap,
-                FontSize = 12,
-                Height = 400,
-                Width = 560
-            };
-
-            var result = new ContentDialog
-            {
-                XamlRoot = XamlRoot,
-                Title = report.Hits.Count > 0 ? $"\"{term}\" — {report.Hits.Count} hit(s)" : $"\"{term}\" — not found",
-                Content = new ScrollViewer { Content = body, MaxHeight = 420 },
-                PrimaryButtonText = "Copy",
-                CloseButtonText = "Close",
-                DefaultButton = ContentDialogButton.Close
-            };
-
-            if (await result.ShowAsync() == ContentDialogResult.Primary)
-            {
-                var package = new Windows.ApplicationModel.DataTransfer.DataPackage();
-                package.SetText(summary.ToString());
-                Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(package);
-            }
+            await TextReportDialog.ShowAsync(
+                XamlRoot,
+                report.Hits.Count > 0 ? $"\"{term}\" - {report.Hits.Count} hit(s)" : $"\"{term}\" - not found",
+                summary.ToString(),
+                "namesearch");
 
             FetchStatusText.Text = report.Hits.Count > 0
                 ? $"Found \"{term}\" in {report.Hits.Count} place(s). Page extracts saved."

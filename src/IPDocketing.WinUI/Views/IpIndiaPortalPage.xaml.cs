@@ -512,34 +512,16 @@ public sealed partial class IpIndiaPortalPage : Page
         Section("Radios and checkboxes", "radios");
         Section("Buttons", "buttons");
 
-        var box = new TextBox
-        {
-            Text = report.ToString(),
-            IsReadOnly = true,
-            AcceptsReturn = true,
-            TextWrapping = Microsoft.UI.Xaml.TextWrapping.NoWrap,
-            FontFamily = new Microsoft.UI.Xaml.Media.FontFamily("Cascadia Mono, Consolas"),
-            FontSize = 11,
-            Height = 420
-        };
+        // A read-only TextBox with a fixed Height inside a ScrollViewer
+        // collapses to roughly one visible line - the TextBox already hosts its
+        // own scroll viewer, so nesting it gives an unconstrained measure. Every
+        // diagnostic shown that way was effectively invisible. The shared dialog
+        // uses a single ScrollViewer over a TextBlock, and writes the report to
+        // disk as well so a rendering failure can never lose it again.
+        await IPDocketing.WinUI.Services.TextReportDialog.ShowAsync(
+            XamlRoot, "Fields on the current page", report.ToString(), "fielddiag");
 
-        var dialog = new ContentDialog
-        {
-            XamlRoot = XamlRoot,
-            Title = "Fields on the current page",
-            Content = new ScrollViewer { Content = box, HorizontalScrollBarVisibility = ScrollBarVisibility.Auto },
-            PrimaryButtonText = "Copy",
-            CloseButtonText = "Close",
-            DefaultButton = ContentDialogButton.Close
-        };
-
-        if (await dialog.ShowAsync() == ContentDialogResult.Primary)
-        {
-            var package = new DataPackage();
-            package.SetText(report.ToString());
-            Clipboard.SetContent(package);
-            FillResultText.Text = "Field report copied to the clipboard.";
-        }
+        FillResultText.Text = "Field report shown, and saved to the Reports folder.";
     }
 
     private async void BulkFetch_Click(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
