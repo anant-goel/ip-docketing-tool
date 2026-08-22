@@ -68,21 +68,49 @@ public class JournalFetchService
             var pubDate = ParseDate(cells[2].InnerText);
             var availDate = ParseDate(cells[3].InnerText);
 
+            // LINK EXTRACTION - rewritten after your screenshot showed
+            // "Journal 2273 has no class-range PDFs at all ... 0 link(s)".
+            // The row and date parsed correctly, so the row was found; the
+            // links were being dropped. Two bugs, either of which produces
+            // exactly zero links:
+            //
+            //  1. Anchors with no href attribute were skipped outright
+            //     (`if (IsNullOrWhiteSpace(href)) continue;`). ASP.NET pages
+            //     routinely render navigation as <a onclick="__doPostBack(...)">
+            //     or <a href="javascript:..."> with the real target in onclick.
+            //     Every such link vanished silently.
+            //
+            //  2. The scan started at cell index 4, assuming a fixed
+            //     [Sr.No | Journal | Pub | Avail | Download] layout. Any extra
+            //     or missing column - or a row where the downloads sit in the
+            //     same cell as something else - and the loop reads past the
+            //     end, finding nothing.
+            //
+            // Now: scan EVERY cell, take every anchor, and accept it if a URL
+            // can be recovered from href OR onclick. Cells 1-3 hold the number
+            // and dates, which contain no anchors, so scanning them costs
+            // nothing and removes the layout assumption entirely.
             var classLinks = new List<(string, string)>();
-            for (int i = 4; i < cells.Count; i++)
+            var anchors = row.SelectNodes(".//a");
+
+            if (anchors is not null)
             {
-                var anchors = cells[i].SelectNodes(".//a");
-                if (anchors is null) continue;
                 foreach (var a in anchors)
                 {
-                    var label = a.InnerText.Trim();
-                    var href = a.GetAttributeValue("href", "");
-                    if (string.IsNullOrWhiteSpace(href)) continue;
-                    if (!href.StartsWith("http"))
-                        href = new Uri(new Uri(ListingUrl), href).ToString();
-                    classLinks.Add((label, href));
+                    var label = HtmlEntity.DeEntitize(a.InnerText ?? "").Trim();
+                    if (label.Length == 0) continue;
+
+                    var url = ResolveAnchorUrl(a);
+                    if (url is null) continue;
+
+                    classLinks.Add((label, url));
                 }
             }
+
+            // When a row yields nothing, keep its raw HTML so the failure can
+            // actually be diagnosed instead of guessed at again.
+            if (classLinks.Count == 0)
+                LastEmptyRowHtml ??= Truncate(row.OuterHtml, 4000);
 
             issues.Add(new JournalIssueEntry(journalNo, pubDate, availDate, classLinks));
         }
@@ -130,6 +158,61 @@ public class JournalFetchService
             .Take(Math.Max(1, count))
             .ToList();
     }
+
+    /// <summary>
+    /// Raw HTML of the first row that produced no links, captured so a parsing
+    /// failure can be inspected rather than inferred. Surfaced by the
+    /// "Copy raw links" diagnostic on the Journal page.
+    /// </summary>
+    public string? LastEmptyRowHtml { get; private set; }
+
+    /// <summary>
+    /// Recovers a URL from an anchor, whether it is in href or buried in an
+    /// onclick handler.
+    ///
+    /// Handles the shapes an ASP.NET WebForms page actually emits:
+    ///   href="/IPOJournal/.../file.pdf"        - plain relative link
+    ///   href="javascript:void(0)" onclick="window.open('...')"
+    ///   onclick="__doPostBack('ctl00$...','')" - postback, no URL at all
+    ///
+    /// The last case genuinely has no fetchable URL - the file only exists
+    /// after a form submission - and returns null rather than a fake link that
+    /// would 404 later and look like a download failure.
+    /// </summary>
+    private static string? ResolveAnchorUrl(HtmlNode anchor)
+    {
+        var href = anchor.GetAttributeValue("href", "") ?? "";
+        href = HtmlEntity.DeEntitize(href).Trim();
+
+        if (href.Length > 0 &&
+            !href.StartsWith("javascript:", StringComparison.OrdinalIgnoreCase) &&
+            !href.StartsWith("#"))
+        {
+            return Absolutize(href);
+        }
+
+        // Fall back to a URL embedded in onclick / href="javascript:...".
+        var script = anchor.GetAttributeValue("onclick", "") ?? "";
+        var combined = HtmlEntity.DeEntitize(script + " " + href);
+
+        // A quoted path, typically inside window.open('...') or location.href='...'
+        var quoted = Regex.Match(combined, @"['""]([^'""]*\.(?:pdf|zip)(?:\?[^'""]*)?)['""]",
+            RegexOptions.IgnoreCase);
+        if (quoted.Success) return Absolutize(quoted.Groups[1].Value);
+
+        var anyQuotedPath = Regex.Match(combined, @"['""](/[^'""\s]+|https?://[^'""\s]+)['""]");
+        if (anyQuotedPath.Success) return Absolutize(anyQuotedPath.Groups[1].Value);
+
+        return null;
+    }
+
+    private static string Absolutize(string url) =>
+        url.StartsWith("http", StringComparison.OrdinalIgnoreCase)
+            ? url
+            : new Uri(new Uri(ListingUrl), url).ToString();
+
+    private static string Truncate(string value, int max) =>
+        value.Length <= max ? value : value[..max] + " ...(truncated)";
 
     /// <summary>
     /// Parses a class-range link label into its low and high class numbers.

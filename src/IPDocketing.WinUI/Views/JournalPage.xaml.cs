@@ -17,6 +17,9 @@ public sealed partial class JournalPage : Page
 
     private void LoadIssues()
     {
+        // Clears duplicates left by earlier runs, before deduplication existed.
+        try { App.Journal.RemoveDuplicates(); } catch { /* cosmetic */ }
+
         IssueList.ItemsSource = App.Journal.GetAll().Select(j => new IssueRow(j)).ToList();
     }
 
@@ -211,8 +214,44 @@ public sealed partial class JournalPage : Page
         var withLinks = entries.Where(i => i.ClassLinks.Count > 0).Take(30).ToList();
         if (withLinks.Count == 0)
         {
-            FetchStatusText.Text = "The listing loaded but no download links were found on it. " +
-                                   "Its table layout may have changed.";
+            // Show the raw HTML of a row that yielded nothing. Without this the
+            // failure is invisible from outside - which is exactly how the
+            // "0 link(s)" bug survived several rounds of guessing.
+            var raw = App.JournalFetch.LastEmptyRowHtml;
+
+            var body = new TextBox
+            {
+                Text = raw is null
+                    ? $"Parsed {entries.Count} row(s) from the listing, but none contained any links, " +
+                      "and no raw row could be captured."
+                    : $"Parsed {entries.Count} row(s), but none yielded a download link.\n\n" +
+                      "Raw HTML of the first row that produced nothing — please send me this:\n\n" + raw,
+                IsReadOnly = true,
+                AcceptsReturn = true,
+                TextWrapping = Microsoft.UI.Xaml.TextWrapping.Wrap,
+                FontSize = 11,
+                Height = 380,
+                Width = 560
+            };
+
+            var diag = new ContentDialog
+            {
+                XamlRoot = XamlRoot,
+                Title = "No download links found",
+                Content = new ScrollViewer { Content = body, MaxHeight = 400 },
+                PrimaryButtonText = "Copy",
+                CloseButtonText = "Close",
+                DefaultButton = ContentDialogButton.Primary
+            };
+
+            if (await diag.ShowAsync() == ContentDialogResult.Primary)
+            {
+                var package = new Windows.ApplicationModel.DataTransfer.DataPackage();
+                package.SetText(body.Text);
+                Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(package);
+            }
+
+            FetchStatusText.Text = "No download links parsed. Use Copy in the dialog and send me the raw HTML.";
             return;
         }
 
