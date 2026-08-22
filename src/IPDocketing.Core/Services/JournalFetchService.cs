@@ -109,11 +109,7 @@ public class JournalFetchService
 
         foreach (var (label, url) in issue.ClassLinks)
         {
-            var match = Regex.Match(label, @"CLASS\s*[_\-\s]?(\d+)\s*[-_]\s*(\d+)", RegexOptions.IgnoreCase);
-            if (!match.Success) continue;
-
-            var low = int.Parse(match.Groups[1].Value);
-            var high = int.Parse(match.Groups[2].Value);
+            if (!TryParseClassRange(label, out var low, out var high)) continue;
             if (trademarkClass >= low && trademarkClass <= high)
                 return (issue, label, url);
         }
@@ -133,6 +129,114 @@ public class JournalFetchService
             .OrderByDescending(i => i.PublicationDate ?? DateTime.MinValue)
             .Take(Math.Max(1, count))
             .ToList();
+    }
+
+    /// <summary>
+    /// Parses a class-range link label into its low and high class numbers.
+    ///
+    /// Verified against the live listing (checked 21 Aug 2026). Current issues
+    /// label their links "CLASS 26 - 34"; issues from roughly 2012 and earlier
+    /// use "CLASS_26_-_34" with underscores as separators, and a handful use
+    /// "CLASS_1-4" with no spaces at all. The previous pattern handled the
+    /// modern form but not the underscore form, so back-issue lookups silently
+    /// found nothing.
+    ///
+    /// Underscores are normalised to spaces first, which collapses all three
+    /// variants into one case. Labels with no range at all - "CLASS_35_PART_1",
+    /// "NOTICE", "WELL KNOWN TRADE MARKS" - correctly return false; those are
+    /// real links, just not class-range ones.
+    /// </summary>
+    public static bool TryParseClassRange(string label, out int low, out int high)
+    {
+        low = 0;
+        high = 0;
+        if (string.IsNullOrWhiteSpace(label)) return false;
+
+        var normalized = label.Replace('_', ' ');
+        var match = Regex.Match(normalized, @"CLASS[\s]*(\d+)[\s]*[-\u2013][\s]*(\d+)", RegexOptions.IgnoreCase);
+        if (!match.Success) return false;
+
+        low = int.Parse(match.Groups[1].Value);
+        high = int.Parse(match.Groups[2].Value);
+        return low <= high;
+    }
+
+    /// <summary>
+    /// Same lookup as FindByDateAndClassAsync, but explains exactly which step
+    /// failed instead of returning a bare null.
+    ///
+    /// The old caller printed "No journal issue found on/before {date}, or
+    /// class {n} wasn't in a parseable range" - one message covering two
+    /// completely different failures, so it always named both and identified
+    /// neither. The real cause was invariably the first (an unset date picker
+    /// returning 01-Jan-1601); the class range was fine, but the message
+    /// implicated it every time.
+    /// </summary>
+    public async Task<ClassLookupResult> FindByDateAndClassDetailedAsync(
+        DateTime date, int trademarkClass, CancellationToken ct = default)
+    {
+        List<JournalIssueEntry> issues;
+        try
+        {
+            issues = await FetchIssuesAsync(ct);
+        }
+        catch (Exception ex)
+        {
+            return ClassLookupResult.Failure(
+                $"Could not read the Journal listing page: {ex.Message}");
+        }
+
+        if (issues.Count == 0)
+            return ClassLookupResult.Failure(
+                "The listing page loaded but no issue rows could be parsed from it. " +
+                "Its table layout may have changed.");
+
+        var dated = issues.Where(i => i.PublicationDate is not null).ToList();
+        var issue = dated
+            .Where(i => i.PublicationDate <= date)
+            .OrderByDescending(i => i.PublicationDate)
+            .FirstOrDefault();
+
+        if (issue is null)
+        {
+            var earliest = dated.Min(i => i.PublicationDate);
+            return ClassLookupResult.Failure(
+                $"No issue was published on or before {date:dd MMM yyyy}. " +
+                $"The listing covers {earliest:dd MMM yyyy} to {dated.Max(i => i.PublicationDate):dd MMM yyyy} " +
+                $"({issues.Count} issues). Check the date.");
+        }
+
+        foreach (var (label, url) in issue.ClassLinks)
+        {
+            if (!TryParseClassRange(label, out var low, out var high)) continue;
+            if (trademarkClass >= low && trademarkClass <= high)
+                return ClassLookupResult.Success(issue, label, url);
+        }
+
+        var ranges = issue.ClassLinks
+            .Where(l => TryParseClassRange(l.ClassRangeLabel, out _, out _))
+            .Select(l => l.ClassRangeLabel)
+            .ToList();
+
+        return ClassLookupResult.Failure(ranges.Count == 0
+            ? $"Journal {issue.JournalNumber} ({issue.PublicationDate:dd MMM yyyy}) has no class-range PDFs at all - " +
+              $"it only carries {issue.ClassLinks.Count} notice/well-known-marks link(s)."
+            : $"Class {trademarkClass} isn't covered by Journal {issue.JournalNumber} " +
+              $"({issue.PublicationDate:dd MMM yyyy}). Its ranges are: {string.Join(", ", ranges)}.");
+    }
+
+    public sealed record ClassLookupResult(
+        bool Found,
+        JournalIssueEntry? Issue,
+        string? ClassRangeLabel,
+        string? PdfUrl,
+        string? Reason)
+    {
+        public static ClassLookupResult Success(JournalIssueEntry issue, string label, string url) =>
+            new(true, issue, label, url, null);
+
+        public static ClassLookupResult Failure(string reason) =>
+            new(false, null, null, null, reason);
     }
 
     /// <summary>

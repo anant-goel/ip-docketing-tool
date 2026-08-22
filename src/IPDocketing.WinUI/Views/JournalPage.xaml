@@ -25,6 +25,9 @@
                            Style="{StaticResource SubtitleStyle}" Margin="0,4,0,0" />
             </StackPanel>
             <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                <Button Content="Browse &amp; download issues" Style="{StaticResource MergedAccentButtonStyle}"
+                        Click="BrowseIssues_Click"
+                        ToolTipService.ToolTip="Lists every issue with all its class-range PDFs. Pick and download directly - no class matching, no date box." />
                 <Button Content="Pull latest weekly issues" Style="{StaticResource MergedGlassButtonBaseStyle}"
                         Click="PullLatest_Click"
                         ToolTipService.ToolTip="Reads the public journal listing and logs the most recent issues with their PDF links" />

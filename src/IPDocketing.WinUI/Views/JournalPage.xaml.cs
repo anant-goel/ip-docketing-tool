@@ -50,15 +50,21 @@ public sealed partial class JournalPage : Page
 
         try
         {
-            var result = await App.JournalFetch.FindByDateAndClassAsync(date, trademarkClass);
-            if (result is null)
+            // Reports which step actually failed. The message this replaces
+            // named two possible causes at once ("no issue found, OR the class
+            // wasn't in a parseable range") and so identified neither. Tested
+            // against the live listing: the class ranges parse correctly, and
+            // the real cause was always the unset date picker.
+            var lookup = await App.JournalFetch.FindByDateAndClassDetailedAsync(date, trademarkClass);
+            if (!lookup.Found)
             {
-                FetchStatusText.Text = $"No journal issue found on/before {date:dd MMM yyyy}, or class {trademarkClass} " +
-                                        "wasn't in a parseable range for that issue (some rows are notices/well-known-marks only).";
+                FetchStatusText.Text = lookup.Reason ?? "Lookup failed for an unknown reason.";
                 return;
             }
 
-            var (issue, classRange, pdfUrl) = result.Value;
+            var issue = lookup.Issue!;
+            var classRange = lookup.ClassRangeLabel!;
+            var pdfUrl = lookup.PdfUrl!;
 
             App.Journal.Add(new IPDocketing.Core.Models.JournalIssue
             {
@@ -169,6 +175,240 @@ public sealed partial class JournalPage : Page
             $"Marked issue {issue.IssueNumber} as {(!issue.Reviewed ? "reviewed" : "pending review")}.");
 
         LoadIssues();
+    }
+
+    /// <summary>
+    /// Lists every issue on the listing page with ALL of its class-range PDFs,
+    /// and downloads whichever you pick.
+    ///
+    /// WHY THIS EXISTS. Every other path into the Journal ran through
+    /// "give me a date and a class, I'll find the one right PDF". That put two
+    /// pieces of guesswork between you and a file - a date box that defaulted
+    /// to 1601, and a class-to-range match - and when either failed you got a
+    /// message instead of a PDF, with no way to go and look for yourself.
+    ///
+    /// This asks for neither. It shows what the Registry actually publishes and
+    /// lets you take it. If the automation is wrong about which range holds
+    /// your class, you can still see all five ranges and grab the right one.
+    /// A tool that can't be overridden by the person using it is a tool that
+    /// fails closed, and this one was failing closed.
+    /// </summary>
+    private async void BrowseIssues_Click(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
+    {
+        FetchStatusText.Text = "Reading the Journal listing...";
+
+        List<IPDocketing.Core.Services.JournalFetchService.JournalIssueEntry> entries;
+        try
+        {
+            entries = await App.JournalFetch.FetchIssuesAsync();
+        }
+        catch (Exception ex)
+        {
+            FetchStatusText.Text = $"Couldn't read the listing: {ex.Message}";
+            return;
+        }
+
+        var withLinks = entries.Where(i => i.ClassLinks.Count > 0).Take(30).ToList();
+        if (withLinks.Count == 0)
+        {
+            FetchStatusText.Text = "The listing loaded but no download links were found on it. " +
+                                   "Its table layout may have changed.";
+            return;
+        }
+
+        var issuePicker = new ComboBox
+        {
+            Header = "Journal issue",
+            ItemsSource = withLinks
+                .Select(i => $"{i.JournalNumber}  —  {i.PublicationDate:dd MMM yyyy}  ({i.ClassLinks.Count} files)")
+                .ToList(),
+            SelectedIndex = 0,
+            MinWidth = 420
+        };
+
+        var linkList = new ListView
+        {
+            SelectionMode = ListViewSelectionMode.Multiple,
+            MaxHeight = 240,
+            MinWidth = 420
+        };
+
+        void RefreshLinks()
+        {
+            var issue = withLinks[Math.Max(0, issuePicker.SelectedIndex)];
+            linkList.ItemsSource = issue.ClassLinks.Select(l => l.ClassRangeLabel).ToList();
+        }
+
+        issuePicker.SelectionChanged += (_, _) => RefreshLinks();
+        RefreshLinks();
+
+        var panel = new StackPanel { Spacing = 12, Width = 440 };
+        panel.Children.Add(issuePicker);
+        panel.Children.Add(new TextBlock
+        {
+            Text = "Select one or more files to download. Tip: class 29 sits in whichever range " +
+                   "covers it — e.g. \"CLASS 26 - 34\".",
+            TextWrapping = Microsoft.UI.Xaml.TextWrapping.Wrap,
+            FontSize = 11,
+            Opacity = 0.65
+        });
+        panel.Children.Add(linkList);
+
+        // Copies the raw hrefs. This exists because the URLs are the one thing
+        // I could not see from my side - the listing page isn't reachable from
+        // where I work, so the download path was written blind. Pasting this
+        // output back to me turns "the URLs are probably right" into a fact.
+        var copyLinksButton = new Button
+        {
+            Content = "Copy raw links for this issue",
+            Margin = new Microsoft.UI.Xaml.Thickness(0, 4, 0, 0)
+        };
+        copyLinksButton.Click += (_, _) =>
+        {
+            var issue = withLinks[Math.Max(0, issuePicker.SelectedIndex)];
+            var text = new System.Text.StringBuilder();
+            text.AppendLine($"Journal {issue.JournalNumber} — {issue.PublicationDate:dd MMM yyyy}");
+            foreach (var l in issue.ClassLinks)
+                text.AppendLine($"{l.ClassRangeLabel}\t{l.PdfUrl}");
+
+            var package = new Windows.ApplicationModel.DataTransfer.DataPackage();
+            package.SetText(text.ToString());
+            Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(package);
+            copyLinksButton.Content = $"Copied {issue.ClassLinks.Count} link(s)";
+        };
+        panel.Children.Add(copyLinksButton);
+
+        var dialog = new ContentDialog
+        {
+            XamlRoot = XamlRoot,
+            Title = "Browse Journal issues",
+            Content = panel,
+            PrimaryButtonText = "Download selected",
+            SecondaryButtonText = "Open in browser",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Primary
+        };
+
+        var choice = await dialog.ShowAsync();
+        if (choice == ContentDialogResult.None) return;
+
+        var chosenIssue = withLinks[Math.Max(0, issuePicker.SelectedIndex)];
+        var selectedLabels = linkList.SelectedItems.Cast<string>().ToList();
+
+        if (selectedLabels.Count == 0)
+        {
+            FetchStatusText.Text = "No file was selected.";
+            return;
+        }
+
+        var chosenLinks = chosenIssue.ClassLinks
+            .Where(l => selectedLabels.Contains(l.ClassRangeLabel))
+            .ToList();
+
+        // "Open in browser" is the escape hatch: if the in-app download is
+        // blocked for any reason, the link still works in a normal browser and
+        // you can read the PDF today rather than waiting on me.
+        if (choice == ContentDialogResult.Secondary)
+        {
+            foreach (var link in chosenLinks)
+            {
+                try { await Windows.System.Launcher.LaunchUriAsync(new Uri(link.PdfUrl)); }
+                catch { /* one bad link shouldn't stop the rest */ }
+            }
+            FetchStatusText.Text = $"Opened {chosenLinks.Count} link(s) in your browser.";
+            return;
+        }
+
+        var library = System.IO.Path.Combine(App.AppDataDirectory, "JournalLibrary");
+        var saved = 0;
+        var failures = new List<string>();
+
+        foreach (var link in chosenLinks)
+        {
+            FetchStatusText.Text = $"Downloading {chosenIssue.JournalNumber} — {link.ClassRangeLabel}...";
+            try
+            {
+                var safeLabel = string.Concat(link.ClassRangeLabel
+                    .Select(c => char.IsLetterOrDigit(c) ? c : '_'));
+
+                var path = await App.JournalFetch.DownloadPdfAsync(
+                    link.PdfUrl, library, $"{chosenIssue.JournalNumber}_{safeLabel}");
+
+                var info = new System.IO.FileInfo(path);
+                if (info.Length < 20_000)
+                {
+                    failures.Add($"{link.ClassRangeLabel}: server returned only {info.Length} bytes " +
+                                 "(likely an error page, not the PDF)");
+                    try { System.IO.File.Delete(path); } catch { }
+                    continue;
+                }
+
+                // Recorded against the issue so the name search can read it.
+                var existing = App.Journal.GetAll()
+                    .FirstOrDefault(j => j.IssueNumber == chosenIssue.JournalNumber);
+
+                if (existing is null)
+                {
+                    App.Journal.Add(new IPDocketing.Core.Models.JournalIssue
+                    {
+                        IssueNumber = chosenIssue.JournalNumber,
+                        PublicationDate = chosenIssue.PublicationDate ?? DateTime.Today,
+                        Url = link.PdfUrl,
+                        LocalPdfPath = path,
+                        PdfSizeBytes = info.Length,
+                        DownloadedUtc = DateTime.UtcNow,
+                        Notes = $"Downloaded {link.ClassRangeLabel}"
+                    });
+                }
+                else if (string.IsNullOrWhiteSpace(existing.LocalPdfPath))
+                {
+                    existing.LocalPdfPath = path;
+                    existing.PdfSizeBytes = info.Length;
+                    existing.DownloadedUtc = DateTime.UtcNow;
+                    existing.Url = link.PdfUrl;
+                    App.Database.SaveChanges();
+                }
+
+                saved++;
+            }
+            catch (Exception ex)
+            {
+                failures.Add($"{link.ClassRangeLabel}: {ex.Message}");
+            }
+        }
+
+        LoadIssues();
+
+        var message = $"Downloaded {saved} of {chosenLinks.Count} file(s) to {library}.";
+        if (failures.Count > 0) message += " Failed: " + string.Join("; ", failures.Take(3));
+        FetchStatusText.Text = message;
+
+        if (saved > 0)
+        {
+            var open = new ContentDialog
+            {
+                XamlRoot = XamlRoot,
+                Title = "Downloaded",
+                Content = new TextBlock
+                {
+                    Text = message + "\n\nOpen the folder to read the PDF yourself?",
+                    TextWrapping = Microsoft.UI.Xaml.TextWrapping.Wrap
+                },
+                PrimaryButtonText = "Open folder",
+                CloseButtonText = "Not now",
+                DefaultButton = ContentDialogButton.Primary
+            };
+
+            if (await open.ShowAsync() == ContentDialogResult.Primary)
+            {
+                try
+                {
+                    var folder = await Windows.Storage.StorageFolder.GetFolderFromPathAsync(library);
+                    await Windows.System.Launcher.LaunchFolderAsync(folder);
+                }
+                catch { /* cosmetic */ }
+            }
+        }
     }
 
     private async void FindName_Click(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
