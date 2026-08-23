@@ -231,7 +231,7 @@
                                        Foreground="{ThemeResource TextTertiaryBrush}" />
                         </StackPanel>
                         <StackPanel Orientation="Horizontal" Spacing="8">
-                            <PasswordBox x:Name="GeminiKeyBox" Width="330" PlaceholderText="AIza..." />
+                            <PasswordBox x:Name="GeminiKeyBox" Width="330" PlaceholderText="AQ... or AIzaSy..." />
                             <TextBox x:Name="GeminiModelBox" Width="190" PlaceholderText="model" />
                             <Button Content="Save" Style="{StaticResource MergedGlassMiniButtonStyle}"
                                     Tag="Gemini" Click="AiSaveKey_Click" />

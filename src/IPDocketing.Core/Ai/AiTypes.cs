@@ -20,7 +20,8 @@ public sealed record AiRequest(
     string System,
     string User,
     int MaxTokens = 1024,
-    double Temperature = 0.0)
+    double Temperature = 0.0,
+    bool JsonOnly = false)
 {
     /// <summary>
     /// Temperature defaults to zero. Everything this app asks a model - which
@@ -30,6 +31,25 @@ public sealed record AiRequest(
     /// </summary>
     public static AiRequest Extract(string instruction, string documentText, int maxTokens = 1024)
         => new(instruction, documentText, maxTokens);
+
+    /// <summary>
+    /// Same as Extract, but the model is put into JSON mode where the provider
+    /// supports one.
+    ///
+    /// This matters more here than it looks. Pulling several fields out of an
+    /// examination report at once - class, deadline, objections, agent - means
+    /// parsing the answer, and a model left in prose mode will wrap perfectly
+    /// good JSON in "Here is the information you asked for:" and a fenced code
+    /// block roughly half the time. Worse, for consensus: three providers can
+    /// extract identical data and still be scored as a three-way disagreement
+    /// because one of them added a preamble. JSON mode removes that whole class
+    /// of false conflict.
+    ///
+    /// The instruction must still say what shape the JSON should have; JSON mode
+    /// only guarantees it is valid JSON, not that it has the keys you wanted.
+    /// </summary>
+    public static AiRequest ExtractJson(string instruction, string documentText, int maxTokens = 1024)
+        => new(instruction, documentText, maxTokens, JsonOnly: true);
 }
 
 /// <summary>What one provider said, or why it could not answer.</summary>
@@ -114,12 +134,21 @@ public sealed class AiSettings
     /// Starting points only. Whether any of these still exists is a question
     /// about the provider's catalogue on the day you read this, not about this
     /// code - which is exactly why Models overrides them.
+    ///
+    /// This is not hypothetical: the previous Gemini default, gemini-2.0-flash,
+    /// has been shut down, and a retired model name comes back as a 404 that
+    /// reads exactly like a broken integration.
+    ///
+    /// Gemini therefore defaults to the ALIAS rather than a pinned version.
+    /// gemini-flash-latest always points at the current stable flash release, so
+    /// a retirement stops being an outage. Pin a specific version in Settings if
+    /// you ever need reproducible output more than you need it to keep working.
     /// </summary>
     public static string DefaultModel(AiProviderKind provider) => provider switch
     {
         AiProviderKind.Anthropic => "claude-sonnet-4-5",
         AiProviderKind.OpenAi => "gpt-4o",
-        AiProviderKind.Gemini => "gemini-2.0-flash",
+        AiProviderKind.Gemini => "gemini-flash-latest",
         _ => string.Empty,
     };
 }
