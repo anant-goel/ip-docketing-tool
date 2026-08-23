@@ -30,7 +30,19 @@
              the teal is pulled most of the way back to slate - it was the loudest
              of the three and the furthest from the app's navy. -->
         <!--
-            THE COLOUR FIELD IS STATIC, ON PURPOSE.
+            STATIC, BUT NOT FAINT. Two different problems, two different fixes.
+
+            The FLICKER was caused by movement, not by colour. Every glass
+            surface samples and blurs what is behind it, so animating the
+            backdrop made the compositor re-blur the whole window every frame;
+            a missed frame shows as a flash to the AcrylicBrush FallbackColor.
+            Holding the field still fixes that completely.
+
+            Cutting the colour as well was an overcorrection, and it is what made
+            the app look matte. Glass only reads as glass when there is something
+            behind it worth refracting - strip the colour and a perfectly
+            translucent surface has nothing to show but flat grey. So the colour
+            is back up near where it reads as depth, and it simply does not move.
 
             It used to drift and breathe on long cycles. That was the wrong call
             here: the window sits on a system acrylic backdrop, and every glass
@@ -49,13 +61,13 @@
             UISettings.AnimationsEnabled check, so Windows' Reduce Motion turns
             it off.
         -->
-        <Canvas IsHitTestVisible="False" Opacity="0.20">
+        <Canvas IsHitTestVisible="False" Opacity="0.55">
             <Ellipse x:Name="OrbAzure" Width="1180" Height="1180"
                      Canvas.Left="-520" Canvas.Top="-620">
                 <Ellipse.Fill>
                     <RadialGradientBrush>
-                        <GradientStop Color="#145B8CFF" Offset="0" />
-                        <GradientStop Color="#085B8CFF" Offset="0.5" />
+                        <GradientStop Color="#405B8CFF" Offset="0" />
+                        <GradientStop Color="#1C5B8CFF" Offset="0.5" />
                         <GradientStop Color="#005B8CFF" Offset="1" />
                     </RadialGradientBrush>
                 </Ellipse.Fill>
@@ -65,8 +77,8 @@
                      Canvas.Left="1080" Canvas.Top="420">
                 <Ellipse.Fill>
                     <RadialGradientBrush>
-                        <GradientStop Color="#128A7DFF" Offset="0" />
-                        <GradientStop Color="#078A7DFF" Offset="0.52" />
+                        <GradientStop Color="#388A7DFF" Offset="0" />
+                        <GradientStop Color="#188A7DFF" Offset="0.52" />
                         <GradientStop Color="#008A7DFF" Offset="1" />
                     </RadialGradientBrush>
                 </Ellipse.Fill>
@@ -85,8 +97,8 @@
                      Canvas.Left="220" Canvas.Top="760">
                 <Ellipse.Fill>
                     <RadialGradientBrush>
-                        <GradientStop Color="#0F6E9BC4" Offset="0" />
-                        <GradientStop Color="#066E9BC4" Offset="0.55" />
+                        <GradientStop Color="#2A6E9BC4" Offset="0" />
+                        <GradientStop Color="#126E9BC4" Offset="0.55" />
                         <GradientStop Color="#006E9BC4" Offset="1" />
                     </RadialGradientBrush>
                 </Ellipse.Fill>
@@ -97,7 +109,7 @@
              sheet of glass catches the sky. Cheap, static, and does more for the
              "pane of glass" read than any amount of extra blur. -->
         <Rectangle Height="180" VerticalAlignment="Top" IsHitTestVisible="False"
-                   Fill="{StaticResource VibrantSheenBrush}" Opacity="0.14" />
+                   Fill="{StaticResource VibrantSheenBrush}" Opacity="0.30" />
 
         <Grid>
             <Grid.RowDefinitions>

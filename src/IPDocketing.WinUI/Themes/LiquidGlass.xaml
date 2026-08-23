@@ -35,10 +35,18 @@
                  field arrived almost raw, so a panel took on whichever orb sat
                  behind it and the window lost its own identity. Raising the tint
                  puts the navy back in charge of the colour without putting any
-                 opacity back into the material. -->
+                 opacity back into the material.
+
+                 THIRD PASS: eased back down again. Raising the tint was right
+                 while the colour field behind was still shouting; once the field
+                 was calmed the same tint just painted everything flat navy, which
+                 is the matte look returning by a different route. Tint and field
+                 have to be balanced against each other, not tuned separately.
+                 TintLuminosityOpacity is still untouched, so transparency is
+                 exactly where you liked it. -->
             <AcrylicBrush x:Key="GlassButtonBrush"
                           TintColor="#FF243149"
-                          TintOpacity="0.28"
+                          TintOpacity="0.20"
                           TintLuminosityOpacity="0.34"
                           FallbackColor="#A62A3446" />
             <!-- The accent button keeps more of its own colour than the neutral
@@ -52,12 +60,12 @@
                           FallbackColor="#D93F70D9" />
             <AcrylicBrush x:Key="GlassPanelBrush"
                           TintColor="#FF111827"
-                          TintOpacity="0.34"
+                          TintOpacity="0.24"
                           TintLuminosityOpacity="0.34"
                           FallbackColor="#B4101725" />
             <AcrylicBrush x:Key="GlassCardBrush"
                           TintColor="#FF172033"
-                          TintOpacity="0.30"
+                          TintOpacity="0.20"
                           TintLuminosityOpacity="0.28"
                           FallbackColor="#A6141C2E" />
             <SolidColorBrush x:Key="NavigationViewItemBackgroundSelected" Color="#33FFFFFF" />

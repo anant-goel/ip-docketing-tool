@@ -419,8 +419,22 @@ public sealed class HeadlessJournalDownloader : IDisposable
         _pendingTargetPath = null;
 
         if (finished != _downloadDone.Task)
-            return new DownloadOutcome(link.Label, false, null, 0,
-                "No download started within the timeout - this link probably navigates rather than downloading.");
+        {
+            // No file arrived. Before reporting a timeout, look at what the page
+            // actually became - because the interesting case is that the click
+            // worked perfectly and the Registry's own server then failed.
+            //
+            // Their journal viewer is an ASP.NET MVC app whose ViewJournal action
+            // builds a UNC path out of the FileName it is given, and it throws
+            // "The UNC path should be of the form \\server\\share" straight
+            // onto the page when that path does not resolve. That is a fault on
+            // their file server, not a fault in this click, and it is completely
+            // invisible from here unless the page is read back. Reporting it as
+            // "no download started" sends you looking in the wrong place.
+            var diagnosis = await DescribeCurrentPageAsync();
+
+            return new DownloadOutcome(link.Label, false, null, 0, diagnosis);
+        }
 
         var path = _downloadDone.Task.Result;
         if (path is null || !File.Exists(path))
@@ -437,6 +451,62 @@ public sealed class HeadlessJournalDownloader : IDisposable
         }
 
         return new DownloadOutcome(link.Label, true, path, info.Length, null);
+    }
+
+    /// <summary>
+    /// Reads back what the browser is showing, so a failed click can say what
+    /// actually happened rather than only that nothing downloaded.
+    /// </summary>
+    private async Task<string> DescribeCurrentPageAsync()
+    {
+        try
+        {
+            var probe = await RunScriptAsync("""
+                (function () {
+                    var body = (document.body && document.body.innerText) || '';
+                    var trimmed = body.replace(/\s+/g, ' ').trim();
+
+                    var serverError = /Server Error in|Runtime Error|HTTP Error \d/i.test(trimmed);
+                    var uncFault = /UNC path should be of the form/i.test(trimmed);
+
+                    return JSON.stringify({
+                        url: location.href,
+                        title: document.title || '',
+                        serverError: serverError,
+                        uncFault: uncFault,
+                        excerpt: trimmed.slice(0, 300)
+                    });
+                })();
+                """);
+
+            if (string.IsNullOrWhiteSpace(probe))
+                return "No download started within the timeout, and the page could not be read back.";
+
+            using var parsed = JsonDocument.Parse(probe);
+            var root = parsed.RootElement;
+
+            var url = root.TryGetProperty("url", out var u) ? u.GetString() ?? "" : "";
+            var uncFault = root.TryGetProperty("uncFault", out var f) && f.ValueKind == JsonValueKind.True;
+            var serverError = root.TryGetProperty("serverError", out var e) && e.ValueKind == JsonValueKind.True;
+            var excerpt = root.TryGetProperty("excerpt", out var x) ? x.GetString() ?? "" : "";
+
+            if (uncFault)
+                return "IP India's journal server rejected the request: \"The UNC path should be of the " +
+                       "form \\\\server\\share\". That is a fault inside their own ViewJournal page - " +
+                       "it could not resolve the file on their network share - and it happens for some " +
+                       "issues and not others. Nothing here can fix it; try another class range, or the " +
+                       "same one later. " + (url.Length > 0 ? $"Request: {url}" : "");
+
+            if (serverError)
+                return $"IP India's server returned an error page instead of the PDF. {excerpt}";
+
+            return "No download started within the timeout - this link navigates rather than downloading. " +
+                   (url.Length > 0 ? $"It went to: {url}" : "");
+        }
+        catch
+        {
+            return "No download started within the timeout, and reading the page back also failed.";
+        }
     }
 
     /// <summary>
