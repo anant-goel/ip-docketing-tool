@@ -363,11 +363,18 @@
         <Setter Property="CornerRadius" Value="13" />
     </Style>
 
+    <!-- Rounded rectangle, not a stadium.
+         CornerRadius="999" on a badge only ~22px tall clamps to half the height,
+         which makes a full oval - the "FULLY AUTOMATIC" lozenge. One value here
+         governs roughly twenty-five badges across every page, so this is the
+         only place it needed changing.
+         8 sits in the same family as the rest of the app: 13-14 on buttons and
+         inputs, 20-26 on cards, and a smaller radius on a smaller element. -->
     <Style x:Key="PillBadgeStyle" TargetType="Border">
         <Setter Property="Background" Value="{ThemeResource GlassInputBrush}" />
         <Setter Property="BorderBrush" Value="{ThemeResource GlassHairlineBrush}" />
         <Setter Property="BorderThickness" Value="1" />
-        <Setter Property="CornerRadius" Value="999" />
+        <Setter Property="CornerRadius" Value="8" />
         <Setter Property="Padding" Value="11,5" />
     </Style>
 

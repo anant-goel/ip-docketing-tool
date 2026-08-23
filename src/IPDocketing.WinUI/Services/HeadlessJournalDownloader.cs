@@ -126,7 +126,16 @@ public sealed class HeadlessJournalDownloader : IDisposable
 
     private void Report(string message) => Progress?.Invoke(message);
 
-    public sealed record LinkInfo(int Index, string Label);
+    /// <summary>
+    /// One download link in an issue's row.
+    ///
+    /// <paramref name="Href"/> is the actual resolved URL where the anchor has
+    /// one, and it is what gets used. <paramref name="Index"/> is a fallback for
+    /// genuine postback links that have no URL at all - and it is only a
+    /// fallback, because a document-wide index is not a stable address across a
+    /// re-navigation.
+    /// </summary>
+    public sealed record LinkInfo(int Index, string Label, string? Href = null);
 
     public sealed record DownloadOutcome(
         string Label,
@@ -357,7 +366,18 @@ public sealed class HeadlessJournalDownloader : IDisposable
                     for (var a = 0; a < clickables.length; a++) {
                         var el = clickables[a];
                         var label = labelFor(el, a);
-                        out.push({ index: all.indexOf(el), label: label, tag: el.tagName });
+                        // The resolved href matters far more than the index.
+                        // el.href on an anchor is already absolute; anything
+                        // javascript: or empty is not a URL we can navigate to.
+                        var href = '';
+                        try {
+                            var raw = el.getAttribute ? (el.getAttribute('href') || '') : '';
+                            if (raw && raw.indexOf('javascript:') !== 0 && raw.charAt(0) !== '#') {
+                                href = el.href || raw;
+                            }
+                        } catch (e) { }
+
+                        out.push({ index: all.indexOf(el), label: label, href: href, tag: el.tagName });
                     }
                     break;
                 }
@@ -376,7 +396,10 @@ public sealed class HeadlessJournalDownloader : IDisposable
         {
             var index = item.GetProperty("index").GetInt32();
             var label = item.GetProperty("label").GetString() ?? "";
-            if (index >= 0) links.Add(new LinkInfo(index, label));
+            var href = item.TryGetProperty("href", out var h) ? h.GetString() : null;
+
+            if (index >= 0 || !string.IsNullOrWhiteSpace(href))
+                links.Add(new LinkInfo(index, label, string.IsNullOrWhiteSpace(href) ? null : href));
         }
 
         return links;
@@ -397,23 +420,69 @@ public sealed class HeadlessJournalDownloader : IDisposable
         _pendingTargetPath = targetPath;
         _downloadDone = new TaskCompletionSource<string?>();
 
-        Report($"Clicking \"{link.Label}\"...");
+        // GO STRAIGHT TO THE URL WHERE THERE IS ONE.
+        //
+        // Clicking by document-wide index was the mistake. The index is captured
+        // while listing the row, then ReturnToListingAsync re-navigates before
+        // the next click - and any difference in the rebuilt DOM shifts every
+        // index after it. Click the wrong anchor and you reach ViewJournal with
+        // the wrong FileName, or none, which is precisely how their server comes
+        // back with "The UNC path should be of the form \\server\share": the
+        // path it built was empty. Clicking the same link by hand works because
+        // a person clicks the link, not the eleventh anchor on the page.
+        //
+        // The href captured at listing time IS the address the manual click
+        // goes to, so navigating to it does exactly what you do by hand.
+        if (!string.IsNullOrWhiteSpace(link.Href))
+        {
+            Report($"Opening \"{link.Label}\"...");
 
-        var clickScript = $$"""
-            (function () {
-                var all = document.querySelectorAll(
-                    'a, input[type="image"], input[type="submit"], input[type="button"], button, img[onclick]');
-                var el = all[{{link.Index}}];
-                if (!el) return "no-element";
-                el.scrollIntoView();
-                el.click();
-                return "clicked";
-            })();
-            """;
+            _navigationDone = new TaskCompletionSource<bool>();
+            _browser.CoreWebView2.Navigate(link.Href);
+        }
+        else
+        {
+            // A genuine postback with no URL. Clicking is the only option, but
+            // the element is verified against the label we recorded first -
+            // downloading the wrong class range silently is worse than failing.
+            Report($"Clicking \"{link.Label}\"...");
 
-        var clickResult = await RunScriptAsync(clickScript);
-        if (clickResult != "clicked")
-            return new DownloadOutcome(link.Label, false, null, 0, "The link could not be found on the page.");
+            var clickScript = $$"""
+                (function () {
+                    var all = document.querySelectorAll(
+                        'a, input[type="image"], input[type="submit"], input[type="button"], button, img[onclick]');
+                    var el = all[{{link.Index}}];
+                    if (!el) return "no-element";
+
+                    var expected = {{JsonSerializer.Serialize(link.Label)}};
+                    var actual = ((el.innerText || '') + ' ' + (el.value || '') + ' ' +
+                                  (el.getAttribute('title') || '') + ' ' +
+                                  (el.getAttribute('alt') || '')).replace(/\s+/g, ' ').trim();
+
+                    // Only insist when we recorded a real name. Icon links are
+                    // named "Download 3" by position, and checking those against
+                    // the element would reject every one of them.
+                    if (expected.indexOf('Download ') !== 0 &&
+                        actual.toLowerCase().indexOf(expected.toLowerCase()) === -1) {
+                        return "moved";
+                    }
+
+                    el.scrollIntoView();
+                    el.click();
+                    return "clicked";
+                })();
+                """;
+
+            var clickResult = await RunScriptAsync(clickScript);
+
+            if (clickResult == "moved")
+                return new DownloadOutcome(link.Label, false, null, 0,
+                    "The listing rearranged between reading it and clicking, so the link is no longer " +
+                    "where it was. Nothing was downloaded rather than risk fetching the wrong range.");
+
+            if (clickResult != "clicked")
+                return new DownloadOutcome(link.Label, false, null, 0, "The link could not be found on the page.");
+        }
 
         var finished = await Task.WhenAny(_downloadDone.Task, Task.Delay(timeout));
         _pendingTargetPath = null;
@@ -491,11 +560,10 @@ public sealed class HeadlessJournalDownloader : IDisposable
             var excerpt = root.TryGetProperty("excerpt", out var x) ? x.GetString() ?? "" : "";
 
             if (uncFault)
-                return "IP India's journal server rejected the request: \"The UNC path should be of the " +
-                       "form \\\\server\\share\". That is a fault inside their own ViewJournal page - " +
-                       "it could not resolve the file on their network share - and it happens for some " +
-                       "issues and not others. Nothing here can fix it; try another class range, or the " +
-                       "same one later. " + (url.Length > 0 ? $"Request: {url}" : "");
+                return "IP India's viewer was reached with no usable FileName, so it could not build a " +
+                       "path and threw. Clicking the same link by hand works, which means the request " +
+                       "went out wrong rather than their file server being down - almost always the " +
+                       "wrong link being opened. " + (url.Length > 0 ? $"Request: {url}" : "");
 
             if (serverError)
                 return $"IP India's server returned an error page instead of the PDF. {excerpt}";

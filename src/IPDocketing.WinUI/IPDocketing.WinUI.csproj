@@ -105,6 +105,15 @@
     <Content Include="Assets\app.ico">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+    <!-- The same artwork as a PNG, for showing INSIDE the app.
+         app.ico stays because that is what Windows wants for the executable,
+         the taskbar and the window chrome. XAML's Image wants a bitmap: an .ico
+         is a container of several sizes, and which one a decoder picks is not
+         something to leave to chance on a 24px title-bar logo. One 256px PNG
+         scales down cleanly to every place it is used. -->
+    <Content Include="Assets\app-icon.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
 
   <!--

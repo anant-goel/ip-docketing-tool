@@ -12,18 +12,14 @@
         <Border BorderBrush="#26FFFFFF" BorderThickness="1" />
 
         <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="16">
-            <Border Width="64" Height="64" CornerRadius="18" HorizontalAlignment="Center"
-                    BorderBrush="#59FFFFFF" BorderThickness="1">
-                <Border.Background>
-                    <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
-                        <GradientStop Color="#FF73A2FF" Offset="0" />
-                        <GradientStop Color="#FF3F6FE8" Offset="0.52" />
-                        <GradientStop Color="#FF315AC6" Offset="1" />
-                    </LinearGradientBrush>
-                </Border.Background>
-                <TextBlock Text="IP" FontSize="26" FontWeight="Bold" Foreground="White"
-                           HorizontalAlignment="Center" VerticalAlignment="Center" />
-            </Border>
+            <!-- The real application icon, not a drawn stand-in.
+                 A plain Image and a ms-appx URI, with no CornerRadius wrapper:
+                 the artwork already carries its own rounded square and its own
+                 transparent corners, so clipping it again would shave the edge
+                 off its own border. Consistent with the note above, this pulls
+                 in no StaticResource and no theme dictionary. -->
+            <Image Source="ms-appx:///Assets/app-icon.png"
+                   Width="72" Height="72" HorizontalAlignment="Center" />
 
             <TextBlock Text="IP Docketing" FontSize="20" FontWeight="SemiBold" Foreground="White"
                        HorizontalAlignment="Center" />

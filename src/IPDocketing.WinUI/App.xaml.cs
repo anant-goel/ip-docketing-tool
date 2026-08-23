@@ -30,6 +30,12 @@ public partial class App : Application
     public static DocumentIngestService DocumentIngest { get; private set; } = null!;
     public static JournalSearchService JournalSearch { get; private set; } = null!;
 
+    /// <summary>DPAPI-protected store for the Claude / Gemini / OpenAI keys.</summary>
+    public static IPDocketing.Core.Ai.AiCredentialStore AiKeys { get; private set; } = null!;
+
+    /// <summary>Asks every ticked provider the same question and compares the answers.</summary>
+    public static IPDocketing.Core.Ai.AiOrchestrator Ai { get; private set; } = null!;
+
     /// <summary>The shared OCR/text pipeline. Exposed so Settings can report which engine is live.</summary>
     public static Services.ChainedTextExtractor TextExtractor { get; private set; } = null!;
 
@@ -397,6 +403,14 @@ public partial class App : Application
             var pdfExtractor = TextExtractor;
             AutoSync.UseExtractor(pdfExtractor);
             DocumentIngest.UseExtractor(pdfExtractor);
+
+            // Constructed unconditionally, and cheap: it reads two small files
+            // and holds no connections. With no keys it simply reports that it
+            // is not configured, which is what Settings shows. Nothing in the
+            // docketing path depends on it, so a failure here cannot take out
+            // the rest of startup.
+            AiKeys = new IPDocketing.Core.Ai.AiCredentialStore(AppDataDirectory);
+            Ai = new IPDocketing.Core.Ai.AiOrchestrator(AiKeys);
 
             JournalSearch = new JournalSearchService(Database);
             JournalSearch.UseExtractor(pdfExtractor);

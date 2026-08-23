@@ -175,6 +175,108 @@
                 </StackPanel>
             </Border>
 
+
+            <!-- AI assistance. Three providers, asked the same question at once.
+                 The value is not a better single answer - it is that agreement
+                 between independent models is evidence, and disagreement is a
+                 flag to open the document yourself. -->
+            <Border Style="{StaticResource GlassSurfaceStyle}">
+                <StackPanel Spacing="12">
+                    <TextBlock Text="AI assistance" FontWeight="SemiBold" FontSize="16"
+                               Foreground="{ThemeResource TextPrimaryBrush}" />
+                    <TextBlock TextWrapping="Wrap" FontSize="12" Foreground="{ThemeResource TextSecondaryBrush}"
+                               Text="Add a key for any of Claude, Gemini or OpenAI. Every ticked provider is asked the same question at the same time: where they agree you have corroboration, where they disagree the answer is flagged for you to check. Keys are encrypted with Windows DPAPI under your account and stored in the app data folder — never in the database, and never in a log." />
+
+                    <ToggleSwitch x:Name="AiEnabledSwitch" Header="Enable AI assistance"
+                                  OnContent="On" OffContent="Off" Toggled="AiSetting_Changed" />
+
+                    <!-- Consent is deliberately its own switch. Pasting a key is a
+                         statement about billing; sending a client's examination
+                         report to a third party is a statement about
+                         confidentiality, and the second does not follow from the
+                         first. Nothing is transmitted until this is on. -->
+                    <ToggleSwitch x:Name="AiConsentSwitch" Header="I approve sending document text to these providers"
+                                  OnContent="Approved" OffContent="Not approved" Toggled="AiSetting_Changed" />
+                    <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="{StaticResource WarningBrush}"
+                               Text="This sends the text of client documents to a third-party service. Check your firm's confidentiality obligations before turning it on. Testing a key does not send document text." />
+
+                    <Border Style="{StaticResource GlassSeparatorStyle}" />
+
+                    <!-- Anthropic -->
+                    <StackPanel Spacing="6">
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <CheckBox x:Name="AnthropicActive" Content="Claude (Anthropic)" MinWidth="200"
+                                      Checked="AiSetting_Changed" Unchecked="AiSetting_Changed" />
+                            <TextBlock x:Name="AnthropicStatus" VerticalAlignment="Center" FontSize="11"
+                                       Foreground="{ThemeResource TextTertiaryBrush}" />
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <PasswordBox x:Name="AnthropicKeyBox" Width="330" PlaceholderText="sk-ant-..." />
+                            <TextBox x:Name="AnthropicModelBox" Width="190" PlaceholderText="model" />
+                            <Button Content="Save" Style="{StaticResource MergedGlassMiniButtonStyle}"
+                                    Tag="Anthropic" Click="AiSaveKey_Click" />
+                            <Button Content="Test" Style="{StaticResource MergedGlassMiniButtonStyle}"
+                                    Tag="Anthropic" Click="AiTestKey_Click" />
+                            <Button Content="Clear" Style="{StaticResource MergedGlassMiniButtonStyle}"
+                                    Tag="Anthropic" Click="AiClearKey_Click" />
+                        </StackPanel>
+                    </StackPanel>
+
+                    <!-- Gemini -->
+                    <StackPanel Spacing="6">
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <CheckBox x:Name="GeminiActive" Content="Gemini (Google)" MinWidth="200"
+                                      Checked="AiSetting_Changed" Unchecked="AiSetting_Changed" />
+                            <TextBlock x:Name="GeminiStatus" VerticalAlignment="Center" FontSize="11"
+                                       Foreground="{ThemeResource TextTertiaryBrush}" />
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <PasswordBox x:Name="GeminiKeyBox" Width="330" PlaceholderText="AIza..." />
+                            <TextBox x:Name="GeminiModelBox" Width="190" PlaceholderText="model" />
+                            <Button Content="Save" Style="{StaticResource MergedGlassMiniButtonStyle}"
+                                    Tag="Gemini" Click="AiSaveKey_Click" />
+                            <Button Content="Test" Style="{StaticResource MergedGlassMiniButtonStyle}"
+                                    Tag="Gemini" Click="AiTestKey_Click" />
+                            <Button Content="Clear" Style="{StaticResource MergedGlassMiniButtonStyle}"
+                                    Tag="Gemini" Click="AiClearKey_Click" />
+                        </StackPanel>
+                    </StackPanel>
+
+                    <!-- OpenAI -->
+                    <StackPanel Spacing="6">
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <CheckBox x:Name="OpenAiActive" Content="OpenAI" MinWidth="200"
+                                      Checked="AiSetting_Changed" Unchecked="AiSetting_Changed" />
+                            <TextBlock x:Name="OpenAiStatus" VerticalAlignment="Center" FontSize="11"
+                                       Foreground="{ThemeResource TextTertiaryBrush}" />
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <PasswordBox x:Name="OpenAiKeyBox" Width="330" PlaceholderText="sk-..." />
+                            <TextBox x:Name="OpenAiModelBox" Width="190" PlaceholderText="model" />
+                            <Button Content="Save" Style="{StaticResource MergedGlassMiniButtonStyle}"
+                                    Tag="OpenAi" Click="AiSaveKey_Click" />
+                            <Button Content="Test" Style="{StaticResource MergedGlassMiniButtonStyle}"
+                                    Tag="OpenAi" Click="AiTestKey_Click" />
+                            <Button Content="Clear" Style="{StaticResource MergedGlassMiniButtonStyle}"
+                                    Tag="OpenAi" Click="AiClearKey_Click" />
+                        </StackPanel>
+                    </StackPanel>
+
+                    <Border Style="{StaticResource GlassSeparatorStyle}" />
+
+                    <StackPanel Orientation="Horizontal" Spacing="10">
+                        <TextBox x:Name="AiTimeoutBox" Width="120" Header="Timeout (seconds)"
+                                 Style="{StaticResource GlassTextBoxStyle}" />
+                        <Button Content="Open key folder" VerticalAlignment="Bottom"
+                                Style="{StaticResource MergedGlassButtonBaseStyle}"
+                                Click="OpenAiFolder_Click" />
+                    </StackPanel>
+
+                    <TextBlock x:Name="AiStatusText" TextWrapping="Wrap" FontSize="12"
+                               Foreground="{ThemeResource TextSecondaryBrush}" />
+                </StackPanel>
+            </Border>
+
             <!-- Material -->
             <Border Style="{StaticResource GlassCardStyle}">
                 <StackPanel Spacing="6">

@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Linq;
 using System.Text.Json;
+using IPDocketing.Core.Ai;
 using IPDocketing.Core.Services;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -23,10 +24,217 @@ public sealed partial class SettingsPage : Page
             InitThemePicker();
             LoadApiKeys();
             RefreshBackupUi();
+            RefreshAiUi();
         }
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine($"SettingsPage init failed: {ex}");
+        }
+    }
+
+    // ------------------------------------------------------------------ AI
+
+    /// <summary>
+    /// True while RefreshAiUi is writing to the controls, so the Toggled and
+    /// Checked handlers do not save settings that are only half loaded and then
+    /// re-enter this method. Without it, setting three checkboxes on startup
+    /// writes the settings file three times, each from a partly-populated UI.
+    /// </summary>
+    private bool _loadingAiUi;
+
+    private static AiProviderKind KindFromTag(object? tag) => tag as string switch
+    {
+        "Anthropic" => AiProviderKind.Anthropic,
+        "Gemini" => AiProviderKind.Gemini,
+        _ => AiProviderKind.OpenAi,
+    };
+
+    private void RefreshAiUi()
+    {
+        _loadingAiUi = true;
+        try
+        {
+            var settings = App.AiKeys.LoadSettings();
+
+            AiEnabledSwitch.IsOn = settings.Enabled;
+            AiConsentSwitch.IsOn = settings.CloudConsentGiven;
+            AiTimeoutBox.Text = settings.TimeoutSeconds.ToString();
+
+            AnthropicActive.IsChecked = settings.ActiveProviders.Contains(AiProviderKind.Anthropic);
+            GeminiActive.IsChecked = settings.ActiveProviders.Contains(AiProviderKind.Gemini);
+            OpenAiActive.IsChecked = settings.ActiveProviders.Contains(AiProviderKind.OpenAi);
+
+            AnthropicModelBox.Text = settings.ModelFor(AiProviderKind.Anthropic);
+            GeminiModelBox.Text = settings.ModelFor(AiProviderKind.Gemini);
+            OpenAiModelBox.Text = settings.ModelFor(AiProviderKind.OpenAi);
+
+            // The key itself is never put back into the box. A PasswordBox
+            // repopulated with a real secret is one "show password" away from
+            // being on screen, and there is no reason to hand it back - the only
+            // thing anyone needs to see is which key is installed.
+            AnthropicStatus.Text = AiCredentialStore.Mask(App.AiKeys.GetKey(AiProviderKind.Anthropic));
+            GeminiStatus.Text = AiCredentialStore.Mask(App.AiKeys.GetKey(AiProviderKind.Gemini));
+            OpenAiStatus.Text = AiCredentialStore.Mask(App.AiKeys.GetKey(AiProviderKind.OpenAi));
+
+            AiStatusText.Text = App.Ai.BlockedReason() ??
+                $"Ready - {App.Ai.Available.Count} provider(s) will be asked each question.";
+        }
+        catch (Exception ex)
+        {
+            AiStatusText.Text = "Could not read AI settings: " + ex.Message;
+        }
+        finally
+        {
+            _loadingAiUi = false;
+        }
+    }
+
+    /// <summary>Persists whatever the switches and checkboxes currently say.</summary>
+    private void SaveAiSettings()
+    {
+        var settings = App.AiKeys.LoadSettings();
+
+        settings.Enabled = AiEnabledSwitch.IsOn;
+        settings.CloudConsentGiven = AiConsentSwitch.IsOn;
+
+        settings.ActiveProviders.Clear();
+        if (AnthropicActive.IsChecked == true) settings.ActiveProviders.Add(AiProviderKind.Anthropic);
+        if (GeminiActive.IsChecked == true) settings.ActiveProviders.Add(AiProviderKind.Gemini);
+        if (OpenAiActive.IsChecked == true) settings.ActiveProviders.Add(AiProviderKind.OpenAi);
+
+        settings.Models["Anthropic"] = AnthropicModelBox.Text?.Trim() ?? "";
+        settings.Models["Gemini"] = GeminiModelBox.Text?.Trim() ?? "";
+        settings.Models["OpenAi"] = OpenAiModelBox.Text?.Trim() ?? "";
+
+        if (int.TryParse(AiTimeoutBox.Text?.Trim(), out var timeout) && timeout is >= 5 and <= 600)
+            settings.TimeoutSeconds = timeout;
+
+        App.AiKeys.SaveSettings(settings);
+
+        // The orchestrator holds its own copy, and each provider holds the copy
+        // it was built with. Without this, a changed model or timeout takes
+        // effect only after a restart.
+        App.Ai.Reload();
+    }
+
+    private void AiSetting_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_loadingAiUi) return;
+
+        try
+        {
+            SaveAiSettings();
+            AiStatusText.Text = App.Ai.BlockedReason() ??
+                $"Ready - {App.Ai.Available.Count} provider(s) will be asked each question.";
+        }
+        catch (Exception ex)
+        {
+            AiStatusText.Text = "Could not save: " + ex.Message;
+        }
+    }
+
+    private void AiSaveKey_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button button) return;
+        var kind = KindFromTag(button.Tag);
+
+        var box = kind switch
+        {
+            AiProviderKind.Anthropic => AnthropicKeyBox,
+            AiProviderKind.Gemini => GeminiKeyBox,
+            _ => OpenAiKeyBox,
+        };
+
+        var key = box.Password;
+        if (string.IsNullOrWhiteSpace(key))
+        {
+            AiStatusText.Text = $"Paste a {kind} key into the box before saving.";
+            return;
+        }
+
+        App.AiKeys.SetKey(kind, key);
+
+        // Cleared immediately. The key is on disk under DPAPI now; leaving a
+        // copy sitting in a control is a second place it can be read from.
+        box.Password = string.Empty;
+
+        SaveAiSettings();
+        RefreshAiUi();
+        AiStatusText.Text = $"{kind} key saved and encrypted. Tick the provider to include it in runs.";
+    }
+
+    private async void AiTestKey_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button button) return;
+        var kind = KindFromTag(button.Tag);
+
+        button.IsEnabled = false;
+        AiStatusText.Text = $"Asking {kind} to reply with one word...";
+
+        try
+        {
+            // Save first, so Test uses the model currently in the box rather
+            // than the one saved earlier.
+            SaveAiSettings();
+
+            var result = await App.Ai.TestAsync(kind);
+
+            AiStatusText.Text = result.Succeeded
+                ? $"{kind} answered in {result.Duration.TotalMilliseconds:0} ms. The key and model both work."
+                : $"{kind} failed: {result.Error}";
+        }
+        catch (Exception ex)
+        {
+            AiStatusText.Text = $"{kind} test failed: {ex.Message}";
+        }
+        finally
+        {
+            button.IsEnabled = true;
+        }
+    }
+
+    private async void AiClearKey_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button button) return;
+        var kind = KindFromTag(button.Tag);
+
+        if (!App.AiKeys.HasKey(kind))
+        {
+            AiStatusText.Text = $"There is no {kind} key to remove.";
+            return;
+        }
+
+        var confirm = new ContentDialog
+        {
+            XamlRoot = XamlRoot,
+            Title = $"Remove the {kind} key?",
+            Content = "The key is deleted from this machine. You will need to paste it again to use " +
+                      $"{kind}. Nothing else is affected.",
+            PrimaryButtonText = "Remove",
+            CloseButtonText = "Keep it",
+            DefaultButton = ContentDialogButton.Close,
+        };
+
+        if (await confirm.ShowAsync() != ContentDialogResult.Primary) return;
+
+        App.AiKeys.SetKey(kind, null);
+        RefreshAiUi();
+        AiStatusText.Text = $"{kind} key removed.";
+    }
+
+    private void OpenAiFolder_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = App.AppDataDirectory,
+                UseShellExecute = true,
+            });
+        }
+        catch (Exception ex)
+        {
+            AiStatusText.Text = "Could not open the folder: " + ex.Message;
         }
     }
 

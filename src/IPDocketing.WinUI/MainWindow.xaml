@@ -119,12 +119,11 @@
 
             <Grid x:Name="AppTitleBar" Padding="18,0,160,0" Background="Transparent">
                 <StackPanel Orientation="Horizontal" Spacing="11" VerticalAlignment="Center">
-                    <Border Width="25" Height="25" CornerRadius="8"
-                            Background="{StaticResource LiquidPrimaryBrush}"
-                            BorderBrush="{StaticResource LiquidEdgeBrush}" BorderThickness="1">
-                        <TextBlock Text="IP" FontSize="10" FontWeight="Bold"
-                                   Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center" />
-                    </Border>
+                    <!-- Same artwork as the executable and the taskbar, so the
+                         window identifies itself with one mark rather than two.
+                         26px from a 256px source, which downsamples cleanly. -->
+                    <Image Source="ms-appx:///Assets/app-icon.png"
+                           Width="26" Height="26" VerticalAlignment="Center" />
                     <TextBlock Text="IP Docketing | By Anant Goel" FontFamily="Segoe UI Variable Display"
                                FontWeight="SemiBold" FontSize="13"
                                Foreground="{ThemeResource TextPrimaryBrush}" VerticalAlignment="Center" />
@@ -264,7 +263,7 @@
                                                 MinWidth="20"
                                                 Height="20"
                                                 Padding="5,0"
-                                                CornerRadius="10"
+                                                CornerRadius="7"
                                                 Background="{StaticResource DangerBrush}">
                                             <TextBlock x:Name="ReminderCountText"
                                                        Text="0"
