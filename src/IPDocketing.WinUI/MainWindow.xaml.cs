@@ -22,6 +22,9 @@ public sealed partial class MainWindow : Window
     private readonly DispatcherTimer _reminderTimer;
     private bool _notificationsRegistered;
 
+    /// <summary>Last presenter state seen, so the backdrop is only swapped when it actually changes.</summary>
+    private OverlappedPresenterState _lastPresenterState = OverlappedPresenterState.Restored;
+
     public MainWindow()
     {
         InitializeComponent();
@@ -84,6 +87,10 @@ public sealed partial class MainWindow : Window
             if (File.Exists(iconPath))
                 _appWindow.SetIcon(iconPath);
 
+            // Re-apply the backdrop whenever the window is maximised or restored.
+            // See ApplySystemBackdrop for why the two states need different ones.
+            _appWindow.Changed += OnAppWindowChanged;
+
             if (AppWindowTitleBar.IsCustomizationSupported())
             {
                 _appWindow.TitleBar.ExtendsContentIntoTitleBar = true;
@@ -112,12 +119,62 @@ public sealed partial class MainWindow : Window
     /// Prefer Desktop Acrylic for liquid-glass blur of the desktop (reference look).
     /// Fall back to Mica Alt, then solid.
     /// </summary>
+    /// <summary>
+    /// Swaps the backdrop when the window is maximised or restored, because the
+    /// two states genuinely need different materials.
+    /// </summary>
+    private void OnAppWindowChanged(AppWindow sender, AppWindowChangedEventArgs args)
+    {
+        if (!args.DidSizeChange && !args.DidPresenterChange) return;
+        if (sender.Presenter is not OverlappedPresenter presenter) return;
+
+        // Resizing fires this constantly. Only a real state transition matters,
+        // and re-applying a backdrop on every drag frame would be its own kind
+        // of flicker.
+        if (presenter.State == _lastPresenterState) return;
+        _lastPresenterState = presenter.State;
+
+        ApplySystemBackdrop();
+    }
+
+    /// <summary>
+    /// Chooses the window material.
+    ///
+    /// WHY MAXIMISED AND RESTORED ARE DIFFERENT.
+    ///
+    /// Desktop Acrylic samples what is behind the window and blurs it. Restored,
+    /// that is your wallpaper and whatever else is on screen, so the glass has
+    /// real depth - which is why transparency looks right in a small window.
+    /// Maximised, Windows stops feeding it: acrylic is a transient-surface
+    /// material by design, and the compositor does not keep blurring a desktop
+    /// nobody can see. The brush falls back to a flat colour, every in-app glass
+    /// surface then samples that flat colour, and the whole window goes matte.
+    /// Nothing in this app changed between the two states.
+    ///
+    /// Mica is the material Windows intends for exactly this case: a full-window
+    /// app backdrop that stays tinted by the wallpaper when maximised. BaseAlt is
+    /// the darker of the two, which suits this app.
+    ///
+    /// So: Acrylic while restored, Mica Alt while maximised. Each state gets the
+    /// material that actually works in it, rather than one choice that is right
+    /// half the time.
+    /// </summary>
     private void ApplySystemBackdrop()
     {
+        var maximised = (_appWindow?.Presenter as OverlappedPresenter)?.State
+                        == OverlappedPresenterState.Maximized;
+
         RootGrid.Background = new SolidColorBrush(Color.FromArgb(255, 8, 11, 18));
 
         try
         {
+            if (maximised && MicaController.IsSupported())
+            {
+                SystemBackdrop = new MicaBackdrop { Kind = MicaKind.BaseAlt };
+                RootGrid.Background = new SolidColorBrush(Colors.Transparent);
+                return;
+            }
+
             if (DesktopAcrylicController.IsSupported())
             {
                 SystemBackdrop = new DesktopAcrylicBackdrop();
@@ -133,7 +190,7 @@ public sealed partial class MainWindow : Window
         }
         catch
         {
-            // Solid remains
+            // Solid remains - the app is perfectly usable without a backdrop.
         }
     }
 
