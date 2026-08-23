@@ -6,17 +6,6 @@
     Background="Transparent">
 
     <Grid>
-    <!-- Off-screen host for the headless downloader's WebView2.
-         BUG FIX: this used to sit at 0,0 with Opacity="0" and Canvas.ZIndex="-1",
-         and the IP India listing page was painted straight over this page while
-         a background fetch ran. WebView2 is composited in its own layer rather
-         than drawn into the XAML visual tree, so it honours NEITHER Opacity NOR
-         ZIndex - there is nothing those two properties could have done.
-         It still needs a real layout size to initialise, so it keeps one and is
-         pushed outside the window instead, which does hide it. -->
-    <Grid x:Name="HiddenBrowserHost" Width="900" Height="700"
-          HorizontalAlignment="Left" VerticalAlignment="Top" IsHitTestVisible="False"
-          Margin="-4000,-4000,0,0" />
 
     <Grid Padding="30,24,30,30">
         <Grid.RowDefinitions>
@@ -206,5 +195,23 @@
             </ListView>
         </Border>
     </Grid>
+
+        <!-- LAST child of the root Grid, deliberately.
+             In visible ("show the browser") mode the WebView2 was being drawn
+             BEHIND the page, because this host was declared first and XAML
+             paints children in declaration order. Being last makes it topmost
+             when it is on screen, and costs nothing when it is parked off
+             screen. Canvas.ZIndex is set as well, since a composited WebView2
+             does not always respect declaration order on its own.
+
+             It is parked outside the window rather than hidden with Opacity:
+             WebView2 composites in its own layer and ignores both Opacity and
+             ZIndex for that purpose, which is why the IP India page used to
+             paint straight over this one. Position it does respect. It still
+             needs a real layout size to initialise, so it keeps 900x700. -->
+        <Grid x:Name="HiddenBrowserHost" Width="900" Height="700"
+              HorizontalAlignment="Left" VerticalAlignment="Top"
+              IsHitTestVisible="False" Canvas.ZIndex="99"
+              Margin="-4000,-4000,0,0" />
     </Grid>
 </Page>

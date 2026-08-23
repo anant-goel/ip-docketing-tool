@@ -116,9 +116,36 @@ public sealed partial class JournalPage : Page
                 Notes = $"Auto-fetched for class {trademarkClass} ({classRange})"
             });
 
-            FetchStatusText.Text = $"Found journal {issue.JournalNumber} ({issue.PublicationDate:dd MMM yyyy}), " +
-                                    $"class {trademarkClass} is in \"{classRange}\" - logged with the PDF link.";
+            FetchStatusText.Text = $"Journal {issue.JournalNumber} ({issue.PublicationDate:dd MMM yyyy}): " +
+                                   $"class {trademarkClass} is in \"{classRange}\". Fetching that file...";
             LoadIssues();
+
+            // THE FLOW YOU ASKED FOR, END TO END.
+            //
+            // Open the listing, find the row by its DATE, find the class range
+            // in that row that contains the class you typed, and click only that
+            // one. Previously this step stopped at "logged with the PDF link",
+            // which was no use at all for these rows: the listing's Download
+            // column is __doPostBack, so the "link" it logged was usually empty
+            // and nothing could be fetched from it.
+            var fetched = await DownloadIssuePdfsAsync(
+                issue.JournalNumber,
+                visible: false,
+                onlyClass: trademarkClass,
+                publicationDate: issue.PublicationDate);
+
+            LoadIssues();
+
+            FetchStatusText.Text = fetched.Saved > 0
+                ? $"Journal {issue.JournalNumber} ({issue.PublicationDate:dd MMM yyyy}) - " +
+                  $"\"{classRange}\" saved for class {trademarkClass}."
+                : $"Journal {issue.JournalNumber}: class {trademarkClass} resolved to \"{classRange}\", " +
+                  "but the file could not be fetched. The issue row now shows why.";
+
+            if (fetched.Attempted > 0 || fetched.Saved == 0)
+                await TextReportDialog.ShowAsync(
+                    XamlRoot, $"Class {trademarkClass} - Journal {issue.JournalNumber}",
+                    fetched.Log, "classfetch");
         }
         catch (Exception ex)
         {
@@ -468,7 +495,8 @@ public sealed partial class JournalPage : Page
     /// rather than growing second copies of it.
     /// </summary>
     private async System.Threading.Tasks.Task<IssueDownloadResult> DownloadIssuePdfsAsync(
-        string journalNumber, bool visible = false)
+        string journalNumber, bool visible = false,
+        int? onlyClass = null, DateTime? publicationDate = null)
     {
         var log = new System.Text.StringBuilder();
         var library = System.IO.Path.Combine(App.AppDataDirectory, "JournalLibrary");
@@ -485,8 +513,7 @@ public sealed partial class JournalPage : Page
             downloader.Progress += message =>
                 DispatcherQueue.TryEnqueue(() => FetchStatusText.Text = message);
 
-            var links = await downloader.ListLinksAsync(journalNumber);
-            attempted = links.Count;
+            var links = await downloader.ListLinksAsync(journalNumber, publicationDate);
 
             if (links.Count == 0)
             {
@@ -495,6 +522,52 @@ public sealed partial class JournalPage : Page
                     "The listing row for this issue produced no download links at all.");
                 return new IssueDownloadResult(0, 0, null, log.ToString());
             }
+
+            // CLASS TARGETING.
+            //
+            // Asking for class 29 and being handed "CLASS 1 - 9" is what happens
+            // when the class is used to FIND the issue and then every link in
+            // that issue's row is downloaded in document order - the first of
+            // which is always CLASS 1 - 9. The class was doing half a job: it
+            // picked the row and then stopped mattering.
+            //
+            // Now it picks the file too. Only the range that actually contains
+            // the requested class is clicked, and if no label parses as a range
+            // that is reported rather than silently downloading the wrong
+            // hundred megabytes.
+            if (onlyClass is { } wantedClass)
+            {
+                var ranged = links
+                    .Where(l => IPDocketing.Core.Services.JournalFetchService
+                        .TryParseClassRange(l.Label, out _, out _))
+                    .ToList();
+
+                var matching = links
+                    .Where(l => IPDocketing.Core.Services.JournalFetchService
+                                    .TryParseClassRange(l.Label, out var low, out var high) &&
+                                wantedClass >= low && wantedClass <= high)
+                    .ToList();
+
+                if (matching.Count == 0)
+                {
+                    var detail = ranged.Count == 0
+                        ? $"None of the {links.Count} link(s) in this row say which classes they cover " +
+                          "(they are icon links), so class-based selection cannot work on this issue. " +
+                          "Use Get PDF to fetch them all."
+                        : $"Class {wantedClass} is not covered by any range in this row. " +
+                          $"Available: {string.Join(", ", ranged.Select(r => r.Label))}.";
+
+                    log.AppendLine(detail);
+                    RecordIssueError(journalNumber, detail);
+                    return new IssueDownloadResult(0, 0, null, log.ToString());
+                }
+
+                log.AppendLine($"Class {wantedClass} -> \"{matching[0].Label}\" " +
+                               $"(of {links.Count} link(s) in the row).");
+                links = matching;
+            }
+
+            attempted = links.Count;
 
             log.AppendLine($"Journal {journalNumber} - {links.Count} link(s) found:");
             foreach (var l in links) log.AppendLine($"  - {l.Label}");

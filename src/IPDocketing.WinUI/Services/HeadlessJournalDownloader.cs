@@ -105,6 +105,25 @@ public sealed class HeadlessJournalDownloader : IDisposable
 
     private readonly bool _visible;
 
+    /// <summary>
+    /// The spellings the listing might use for one date. Compared with all
+    /// whitespace stripped, so "17/08/2026" and "17 / 08 / 2026" both match.
+    /// </summary>
+    private static string[] DateCandidates(DateTime? date)
+    {
+        if (date is not { } d) return Array.Empty<string>();
+
+        return new[]
+        {
+            d.ToString("dd/MM/yyyy"),
+            d.ToString("d/M/yyyy"),
+            d.ToString("dd-MM-yyyy"),
+            d.ToString("dd.MM.yyyy"),
+            d.ToString("ddMMMyyyy"),
+            d.ToString("dd-MMM-yyyy"),
+        };
+    }
+
     private void Report(string message) => Progress?.Invoke(message);
 
     public sealed record LinkInfo(int Index, string Label);
@@ -233,7 +252,17 @@ public sealed class HeadlessJournalDownloader : IDisposable
     /// Anchors are identified by their position in the document, because that
     /// index is what we later click; the label is only for naming the file.
     /// </summary>
-    public async Task<List<LinkInfo>> ListLinksAsync(string journalNumber)
+    /// <summary>
+    /// Lists the download links for one journal issue, located by its number,
+    /// its publication date, or both.
+    ///
+    /// Matching by DATE matters because that is how the row is identified in
+    /// practice: you know the issue was published on 17 Aug 2026 long before you
+    /// know it is issue 2274. Passing both is best - either one identifies the
+    /// row, and having two means a renumbering or a reformatted date does not
+    /// lose it.
+    /// </summary>
+    public async Task<List<LinkInfo>> ListLinksAsync(string? journalNumber, DateTime? publicationDate = null)
     {
         await EnsureReadyAsync();
 
@@ -246,7 +275,18 @@ public sealed class HeadlessJournalDownloader : IDisposable
 
         var script = $$"""
             (function () {
-                var wanted = {{JsonSerializer.Serialize(journalNumber)}};
+                var wanted = {{JsonSerializer.Serialize(journalNumber ?? "")}};
+                var wantedDates = {{JsonSerializer.Serialize(DateCandidates(publicationDate))}};
+
+                function cellMatches(text) {
+                    var t = (text || '').replace(/\u00a0/g, ' ').replace(/\s+/g, '').trim();
+                    if (!t) return false;
+                    if (wanted && t === wanted) return true;
+                    for (var d = 0; d < wantedDates.length; d++) {
+                        if (t === wantedDates[d]) return true;
+                    }
+                    return false;
+                }
 
                 // Index over the same widened selector used when clicking, so
                 // the index recorded here still addresses the right element.
@@ -295,9 +335,13 @@ public sealed class HeadlessJournalDownloader : IDisposable
                     if (cells.length < 3) continue;
 
                     // Match the issue by its number cell, not by row position.
+                    // Scan the first four cells, not three: the row is
+                    // [Sr.No | Journal No | Date of Publication | Date of
+                    // Availability | Download...], so a match on the publication
+                    // date lives in cell 2 and the availability date in cell 3.
                     var isRow = false;
-                    for (var c = 0; c < Math.min(3, cells.length); c++) {
-                        if ((cells[c].innerText || '').trim() === wanted) { isRow = true; break; }
+                    for (var c = 0; c < Math.min(4, cells.length); c++) {
+                        if (cellMatches(cells[c].innerText)) { isRow = true; break; }
                     }
                     if (!isRow) continue;
 

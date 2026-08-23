@@ -32,7 +32,6 @@ public sealed partial class MainWindow : Window
         ConfigureWindow();
         ApplySystemBackdrop();
         ApplySavedTheme();
-        StartAmbientDrift();
 
         _clockTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
         _clockTimer.Tick += (_, _) => UpdateClock();
@@ -106,34 +105,6 @@ public sealed partial class MainWindow : Window
         catch
         {
             // Non-critical chrome setup
-        }
-    }
-
-    /// <summary>
-    /// Starts the slow drift of the colour field behind the glass.
-    ///
-    /// The storyboard lives in RootGrid.Resources under a key rather than a
-    /// name, because a Storyboard in a resource dictionary is addressed by key -
-    /// and looking it up here is what lets the animation stay entirely declarative
-    /// in the XAML while still being startable from code.
-    ///
-    /// Failure is swallowed on purpose. If the animation cannot start, the orbs
-    /// simply sit still and the window still looks right; taking the app down
-    /// over a decorative effect would be absurd.
-    /// </summary>
-    private void StartAmbientDrift()
-    {
-        try
-        {
-            if (RootGrid.Resources.TryGetValue("AmbientDrift", out var resource) &&
-                resource is Storyboard drift)
-            {
-                drift.Begin();
-            }
-        }
-        catch
-        {
-            // Decoration only - a still background is a fine outcome.
         }
     }
 
@@ -295,7 +266,18 @@ public sealed partial class MainWindow : Window
         };
 
         if (ContentFrame.CurrentSourcePageType != pageType)
-            ContentFrame.Navigate(pageType, null, new DrillInNavigationTransitionInfo());
+            // No transition on navigation, deliberately.
+            //
+            // DrillIn scales and fades the incoming page. Over a stack of
+            // AcrylicBrush surfaces that means the compositor re-blurs the whole
+            // window for the length of the animation, and any frame it misses
+            // shows as a flash to the brush's FallbackColor. That is the flicker
+            // on page switches.
+            //
+            // The transition was never load-bearing; the shell already makes it
+            // obvious which page you are on. Suppressing it is the fix, and it
+            // also removes the one place navigation could feel slow.
+            ContentFrame.Navigate(pageType, null, new SuppressNavigationTransitionInfo());
     }
 
     private void SelectNavigationItem(string tag)

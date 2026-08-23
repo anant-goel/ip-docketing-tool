@@ -7,69 +7,6 @@
 
     <Grid x:Name="RootGrid" Background="Transparent">
 
-        <Grid.Resources>
-            <!--
-                The colour field, and why it moves.
-
-                Glass is only legible as glass when there is something behind it
-                worth refracting. Two static orbs at 0.72 gave the acrylic a flat
-                gradient to sample, so every panel sampled roughly the same colour
-                every time and the result read as tinted paint no matter how
-                translucent the brush was.
-
-                Three orbs now drift and breathe on long, offset cycles. Nothing
-                here is fast enough to notice directly - the shortest leg is 28
-                seconds - but it means the colour under a card is never quite the
-                colour under the card beside it, and it shifts as you work. That
-                difference is most of what separates Apple's material from a
-                blurred screenshot.
-
-                All four animated properties are transforms, so these run on the
-                composition thread and cost no layout or paint work on the UI
-                thread. Duration and travel are the two knobs worth touching if
-                it ever feels busy.
-            -->
-            <Storyboard x:Key="AmbientDrift" RepeatBehavior="Forever" AutoReverse="True">
-                <DoubleAnimation Storyboard.TargetName="OrbAzure"
-                                 Storyboard.TargetProperty="(UIElement.RenderTransform).(CompositeTransform.TranslateX)"
-                                 From="0" To="180" Duration="0:0:34" />
-                <DoubleAnimation Storyboard.TargetName="OrbAzure"
-                                 Storyboard.TargetProperty="(UIElement.RenderTransform).(CompositeTransform.TranslateY)"
-                                 From="0" To="90" Duration="0:0:46" />
-                <DoubleAnimation Storyboard.TargetName="OrbAzure"
-                                 Storyboard.TargetProperty="(UIElement.RenderTransform).(CompositeTransform.ScaleX)"
-                                 From="1" To="1.18" Duration="0:0:40" />
-                <DoubleAnimation Storyboard.TargetName="OrbAzure"
-                                 Storyboard.TargetProperty="(UIElement.RenderTransform).(CompositeTransform.ScaleY)"
-                                 From="1" To="1.18" Duration="0:0:40" />
-
-                <DoubleAnimation Storyboard.TargetName="OrbViolet"
-                                 Storyboard.TargetProperty="(UIElement.RenderTransform).(CompositeTransform.TranslateX)"
-                                 From="0" To="-220" Duration="0:0:52" />
-                <DoubleAnimation Storyboard.TargetName="OrbViolet"
-                                 Storyboard.TargetProperty="(UIElement.RenderTransform).(CompositeTransform.TranslateY)"
-                                 From="0" To="-140" Duration="0:0:38" />
-                <DoubleAnimation Storyboard.TargetName="OrbViolet"
-                                 Storyboard.TargetProperty="(UIElement.RenderTransform).(CompositeTransform.ScaleX)"
-                                 From="1.12" To="0.94" Duration="0:0:44" />
-                <DoubleAnimation Storyboard.TargetName="OrbViolet"
-                                 Storyboard.TargetProperty="(UIElement.RenderTransform).(CompositeTransform.ScaleY)"
-                                 From="1.12" To="0.94" Duration="0:0:44" />
-
-                <DoubleAnimation Storyboard.TargetName="OrbTeal"
-                                 Storyboard.TargetProperty="(UIElement.RenderTransform).(CompositeTransform.TranslateX)"
-                                 From="0" To="140" Duration="0:0:28" />
-                <DoubleAnimation Storyboard.TargetName="OrbTeal"
-                                 Storyboard.TargetProperty="(UIElement.RenderTransform).(CompositeTransform.TranslateY)"
-                                 From="0" To="-180" Duration="0:0:50" />
-                <DoubleAnimation Storyboard.TargetName="OrbTeal"
-                                 Storyboard.TargetProperty="(UIElement.RenderTransform).(CompositeTransform.ScaleX)"
-                                 From="0.92" To="1.22" Duration="0:0:36" />
-                <DoubleAnimation Storyboard.TargetName="OrbTeal"
-                                 Storyboard.TargetProperty="(UIElement.RenderTransform).(CompositeTransform.ScaleY)"
-                                 From="0.92" To="1.22" Duration="0:0:36" />
-            </Storyboard>
-        </Grid.Resources>
 
         <!-- TONED DOWN.
              The first pass had these at 0.9 with peak alphas around 0x6B, which
@@ -79,38 +16,57 @@
              you actually look at - big saturated blobs of blue, violet and teal
              sitting in the middle of the content area.
 
+             THIRD PASS. Still far too loud: with the surfaces this translucent
+             the field was not something the glass refracted, it was the thing
+             you looked at. Cut again to roughly a third of the last values -
+             canvas 0.20 with peaks around 0x14, so the strongest point of the
+             strongest orb lands near 1.6% alpha. It should now read as a faint
+             warmth in the background rather than as colour in its own right.
+
              The field's job is to give the material something to vary over, and
              it does that at a fraction of this strength. Peak alpha is now around
              0x24 with the canvas at 0.42, the orbs are larger and pushed toward
              the window corners so their centres sit outside the reading area, and
              the teal is pulled most of the way back to slate - it was the loudest
              of the three and the furthest from the app's navy. -->
-        <Canvas IsHitTestVisible="False" Opacity="0.42">
+        <!--
+            THE COLOUR FIELD IS STATIC, ON PURPOSE.
+
+            It used to drift and breathe on long cycles. That was the wrong call
+            here: the window sits on a system acrylic backdrop, and every glass
+            surface above it samples and blurs whatever is behind. Animating the
+            thing being sampled means the compositor re-blurs the whole window on
+            every frame, forever. On ARM64 that is enough to miss frames, and a
+            missed frame on an AcrylicBrush shows as a flash to its FallbackColor
+            - which is the flicker on page switches and the restlessness at
+            startup.
+
+            Held still, these cost one composition and then nothing. The
+            variation they give the material was the point; the movement was
+            decoration that made the app worse.
+
+            If motion is wanted back it belongs behind a setting AND behind a
+            UISettings.AnimationsEnabled check, so Windows' Reduce Motion turns
+            it off.
+        -->
+        <Canvas IsHitTestVisible="False" Opacity="0.20">
             <Ellipse x:Name="OrbAzure" Width="1180" Height="1180"
-                     Canvas.Left="-520" Canvas.Top="-620"
-                     RenderTransformOrigin="0.5,0.5">
-                <Ellipse.RenderTransform>
-                    <CompositeTransform />
-                </Ellipse.RenderTransform>
+                     Canvas.Left="-520" Canvas.Top="-620">
                 <Ellipse.Fill>
                     <RadialGradientBrush>
-                        <GradientStop Color="#265B8CFF" Offset="0" />
-                        <GradientStop Color="#0E5B8CFF" Offset="0.5" />
+                        <GradientStop Color="#145B8CFF" Offset="0" />
+                        <GradientStop Color="#085B8CFF" Offset="0.5" />
                         <GradientStop Color="#005B8CFF" Offset="1" />
                     </RadialGradientBrush>
                 </Ellipse.Fill>
             </Ellipse>
 
             <Ellipse x:Name="OrbViolet" Width="1320" Height="1320"
-                     Canvas.Left="1080" Canvas.Top="420"
-                     RenderTransformOrigin="0.5,0.5">
-                <Ellipse.RenderTransform>
-                    <CompositeTransform />
-                </Ellipse.RenderTransform>
+                     Canvas.Left="1080" Canvas.Top="420">
                 <Ellipse.Fill>
                     <RadialGradientBrush>
-                        <GradientStop Color="#218A7DFF" Offset="0" />
-                        <GradientStop Color="#0C8A7DFF" Offset="0.52" />
+                        <GradientStop Color="#128A7DFF" Offset="0" />
+                        <GradientStop Color="#078A7DFF" Offset="0.52" />
                         <GradientStop Color="#008A7DFF" Offset="1" />
                     </RadialGradientBrush>
                 </Ellipse.Fill>
@@ -126,15 +82,11 @@
                  breaks up the other two, which is its whole job, without
                  announcing itself. -->
             <Ellipse x:Name="OrbTeal" Width="1020" Height="1020"
-                     Canvas.Left="220" Canvas.Top="760"
-                     RenderTransformOrigin="0.5,0.5">
-                <Ellipse.RenderTransform>
-                    <CompositeTransform />
-                </Ellipse.RenderTransform>
+                     Canvas.Left="220" Canvas.Top="760">
                 <Ellipse.Fill>
                     <RadialGradientBrush>
-                        <GradientStop Color="#1C6E9BC4" Offset="0" />
-                        <GradientStop Color="#0A6E9BC4" Offset="0.55" />
+                        <GradientStop Color="#0F6E9BC4" Offset="0" />
+                        <GradientStop Color="#066E9BC4" Offset="0.55" />
                         <GradientStop Color="#006E9BC4" Offset="1" />
                     </RadialGradientBrush>
                 </Ellipse.Fill>
@@ -145,7 +97,7 @@
              sheet of glass catches the sky. Cheap, static, and does more for the
              "pane of glass" read than any amount of extra blur. -->
         <Rectangle Height="180" VerticalAlignment="Top" IsHitTestVisible="False"
-                   Fill="{StaticResource VibrantSheenBrush}" Opacity="0.26" />
+                   Fill="{StaticResource VibrantSheenBrush}" Opacity="0.14" />
 
         <Grid>
             <Grid.RowDefinitions>
@@ -337,15 +289,6 @@
                              translucent shell a hard cut is jarring: the whole
                              window is one continuous surface, so content should
                              arrive onto it rather than replace it. -->
-                        <Frame.ContentTransitions>
-                            <TransitionCollection>
-                                <NavigationThemeTransition>
-                                    <NavigationThemeTransition.DefaultNavigationTransitionInfo>
-                                        <SlideNavigationTransitionInfo Effect="FromRight" />
-                                    </NavigationThemeTransition.DefaultNavigationTransitionInfo>
-                                </NavigationThemeTransition>
-                            </TransitionCollection>
-                        </Frame.ContentTransitions>
                     </Frame>
                 </Grid>
             </NavigationView>
