@@ -428,18 +428,37 @@ internal static class PortalScripts
     /// </summary>
     public const string FetchFileAsBase64 = """
 
-        (async function () {
+        (function () {
             var payload = %%PAYLOAD%%;
             try {
-                var response = await fetch(payload.url, {
-                    credentials: 'include',
-                    redirect: 'follow'
-                });
+                // SYNCHRONOUS ON PURPOSE. This was an (async function(){...})()
+                // using fetch/await, which meant the script's value was a
+                // PROMISE. CoreWebView2.ExecuteScriptAsync does not await
+                // promises - it JSON-encodes whatever the last statement
+                // evaluated to, and a Promise encodes as "{}". The C# side then
+                // tried to deserialise "{}" as a string, threw, swallowed the
+                // exception and returned null, so this ENTIRE path was dead:
+                // every document fell through to the click-and-capture branch
+                // with reason "unknown", and the 25 MB cap, the empty-file check
+                // and the session-expired detection below never ran once. That
+                // is a strong candidate for "unable to fetch the documents".
+                //
+                // A synchronous XHR returns its result inline, which is the one
+                // shape ExecuteScriptAsync can actually carry back.
+                var xhr = new XMLHttpRequest();
+                xhr.open('GET', payload.url, false);
 
-                if (!response.ok)
-                    return JSON.stringify({ ok: false, reason: 'HTTP ' + response.status });
+                // Reads the body as raw bytes rather than letting the browser
+                // decode it as text - without this, every byte above 0x7F is
+                // replaced and the resulting PDF is corrupt.
+                try { xhr.overrideMimeType('text/plain; charset=x-user-defined'); } catch (e) { }
 
-                var type = response.headers.get('content-type') || '';
+                xhr.send(null);
+
+                if (xhr.status < 200 || xhr.status >= 300)
+                    return JSON.stringify({ ok: false, reason: 'HTTP ' + xhr.status });
+
+                var type = xhr.getResponseHeader('content-type') || '';
 
                 // An HTML body here means the session lapsed and the server
                 // returned the login page with a 200. Saving that as a PDF
@@ -447,23 +466,25 @@ internal static class PortalScripts
                 if (/text\/html/i.test(type))
                     return JSON.stringify({ ok: false, reason: 'session-expired' });
 
-                var buffer = await response.arrayBuffer();
-                if (buffer.byteLength > 25 * 1024 * 1024)
+                var raw = xhr.responseText || '';
+                if (raw.length > 25 * 1024 * 1024)
                     return JSON.stringify({ ok: false, reason: 'too-large' });
-                if (buffer.byteLength < 512)
+                if (raw.length < 512)
                     return JSON.stringify({ ok: false, reason: 'empty' });
 
-                var bytes = new Uint8Array(buffer);
                 var binary = '';
                 var chunk = 8192;
-                for (var i = 0; i < bytes.length; i += chunk) {
-                    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+                for (var i = 0; i < raw.length; i += chunk) {
+                    var slice = raw.substring(i, i + chunk);
+                    var buf = new Array(slice.length);
+                    for (var j = 0; j < slice.length; j++) buf[j] = slice.charCodeAt(j) & 0xff;
+                    binary += String.fromCharCode.apply(null, buf);
                 }
 
                 return JSON.stringify({
                     ok: true,
                     contentType: type,
-                    size: buffer.byteLength,
+                    size: raw.length,
                     data: btoa(binary)
                 });
             } catch (e) {
@@ -604,7 +625,30 @@ internal static class PortalScripts
                         }
                     });
                 });
-                return JSON.stringify({ opened: false, closed: closed, panel: 'close' });
+                // `closed` above only means SOMETHING close-shaped was
+                // clicked - the selector matches any element whose class merely
+                // contains "close", so it can hit something unrelated and
+                // report success on a modal that is still open. The caller uses
+                // this result to decide whether it is safe to read the next
+                // panel, and reading the next panel while this one is still up
+                // re-files all of its documents under a second category. So the
+                // answer reported is the actual STATE, not the click.
+                var stillOpen = false;
+                ipdDocuments().forEach(function (doc) {
+                    if (stillOpen) return;
+                    doc.querySelectorAll(
+                        '.modal, .modal-dialog, .ui-dialog, [role="dialog"], [aria-modal="true"]'
+                    ).forEach(function (el) {
+                        if (!stillOpen && ipdVisible(el)) stillOpen = true;
+                    });
+                });
+
+                return JSON.stringify({
+                    opened: false,
+                    clicked: closed,
+                    closed: !stillOpen,
+                    panel: 'close'
+                });
             }
 
             // All four panels the result page offers, not just two. The page
@@ -700,7 +744,15 @@ internal static class PortalScripts
                     if (descIndex < 0) return;
 
                     for (var r = 1; r < trs.length; r++) {
-                        var cells = trs[r].querySelectorAll('td');
+                        // Header cells were read as 'th, td' while DATA cells were read as
+                        // 'td' alone. The whole design pairs the two rows BY COLUMN
+                        // INDEX, so the moment a grid renders its first column as
+                        // <th scope="row"> - ordinary in an ASP.NET GridView with a
+                        // row-header column, and in any accessibility-remediated
+                        // table - the header row has one more entry than the data
+                        // row and EVERY field shifts by one. That is exactly how
+                        // "Class" came back holding the Filing Mode value.
+                        var cells = trs[r].querySelectorAll('th, td');
                         if (cells.length === 0) continue;
 
                         var link = trs[r].querySelector('a[href]');
@@ -784,11 +836,25 @@ internal static class PortalScripts
                 return (s || '').replace(/\u00a0/g, ' ').replace(/\s+/g, ' ').trim();
             }
 
+            // LINE BREAKS ARE KEPT HERE, DELIBERATELY.
+            //
+            // This used to run the whole page through norm(), which collapses
+            // every newline into a space. That left `after()` below with no way
+            // to know where a value ended: the only terminator it had was
+            // another LABELLED token, and headings, buttons and footers carry no
+            // colon. So "Status: Accepted & Advertised" followed by the panel
+            // buttons came back as
+            //   "Accepted & Advertised PR Details Reminders Correspondence & No"
+            // and that whole slab was written into the docket as the status.
+            // A newline is the real end of a labelled value on this page.
             var body = '';
             ipdDocuments().forEach(function (doc) {
-                body += ' ' + ((doc.body && doc.body.innerText) || '');
+                body += '\n' + ((doc.body && doc.body.innerText) || '');
             });
-            body = norm(body);
+            body = (body || '').replace(/ /g, ' ')
+                               .replace(/[ \t]+/g, ' ')
+                               .replace(/ *\n[\s\n]*/g, '\n')
+                               .trim();
 
             // --- the labelled lines above the table --------------------------
             // Longer labels are listed FIRST in the stop-list: regex alternation
@@ -810,6 +876,13 @@ internal static class PortalScripts
                     }
                     var start = m.index + m[0].length;
                     var slice = body.substring(start, start + 120);
+
+                    // End of line ends the value. This is the terminator that
+                    // was missing; without it a status ran on into whatever
+                    // rendered next.
+                    var nl = slice.indexOf('\n');
+                    if (nl >= 0) slice = slice.substring(0, nl);
+
                     var stop = STOP.exec(slice);
                     if (stop) slice = slice.substring(0, stop.index);
                     slice = slice.replace(/^[:\s\-]+/, '').trim();
@@ -880,7 +953,8 @@ internal static class PortalScripts
                     // layouts put a spacer or a colgroup-ish row in between.
                     var dataRows = [];
                     for (var r = 1; r < trs.length; r++) {
-                        var cells = Array.prototype.slice.call(trs[r].querySelectorAll('td'));
+                        // Same 'th, td' pairing rule as above - see the note there.
+                        var cells = Array.prototype.slice.call(trs[r].querySelectorAll('th, td'));
                         if (cells.length < 2) continue;
                         var texts = cells.map(function (c) { return norm(c.innerText); });
                         if (texts.join('').length === 0) continue;
@@ -1042,7 +1116,8 @@ internal static class PortalScripts
                         // Skip nested-table rows, which would otherwise be
                         // counted twice - once here and once for the inner table.
                         if (tr.closest('table') !== table) return;
-                        var cells = Array.prototype.map.call(tr.querySelectorAll('td'), cellText);
+                        // Header rows above are read as 'th, td'; data rows must match.
+                        var cells = Array.prototype.map.call(tr.querySelectorAll('th, td'), cellText);
                         if (cells.length === 0) return;
                         if (cells.join('').length === 0) return;
                         rows.push(cells.slice(0, headers.length));

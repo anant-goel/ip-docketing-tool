@@ -97,6 +97,63 @@ public sealed partial class IpIndiaPortalPage : Page
     private string? _pendingDownloadPath;
     private TaskCompletionSource<string?>? _pendingDownload;
 
+    /// <summary>
+    /// True while a long portal run is in progress. Guards every handler that
+    /// can take minutes.
+    ///
+    /// WHY THIS IS NOT OPTIONAL
+    ///
+    /// These handlers are `async void`, so an exception inside one does not
+    /// return to a caller - it goes to the dispatcher and terminates the
+    /// process. And a second run is very easy to start: the first click shows no
+    /// immediate feedback, so people click again. When it reaches
+    /// `wait.ShowAsync()` while the first run's CAPTCHA dialog is still open,
+    /// WinUI throws - only one ContentDialog may be open at a time - and the app
+    /// closes with no message.
+    ///
+    /// The quieter failure is worse. Two overlapping runs share
+    /// _pendingDownloadPath, _pendingDownload and _bulkResults, so run B's
+    /// capture can return run A's file, and B then files A's document against
+    /// B's matter, reporting success.
+    /// </summary>
+    private bool _runInProgress;
+
+    /// <summary>
+    /// Claims the run, releasing it when the scope is disposed.
+    ///
+    /// A disposable scope rather than a try/finally so that `using var` at the
+    /// top of a handler is the whole of the change - the flag is released when
+    /// the method completes, including down every early-return path and every
+    /// exception path, and none of these long methods needed re-indenting to get
+    /// that guarantee.
+    /// </summary>
+    private readonly struct RunScope : IDisposable
+    {
+        private readonly IpIndiaPortalPage? _page;
+
+        internal RunScope(IpIndiaPortalPage? page) => _page = page;
+
+        /// <summary>False when another run already holds the portal.</summary>
+        public bool Started => _page is not null;
+
+        public void Dispose()
+        {
+            if (_page is not null) _page._runInProgress = false;
+        }
+    }
+
+    private RunScope BeginRun(string what)
+    {
+        if (_runInProgress)
+        {
+            StatusText.Text = $"{what} is already running - let it finish before starting another.";
+            return new RunScope(null);
+        }
+
+        _runInProgress = true;
+        return new RunScope(this);
+    }
+
     private void OnPortalDownloadStarting(
         Microsoft.Web.WebView2.Core.CoreWebView2 sender,
         Microsoft.Web.WebView2.Core.CoreWebView2DownloadStartingEventArgs args)
@@ -602,6 +659,9 @@ public sealed partial class IpIndiaPortalPage : Page
 
     private async void BulkFetch_Click(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
     {
+        using var run = BeginRun("The bulk status fetch");
+        if (!run.Started) return;
+
         var numbers = (BulkNumbersBox.Text ?? "")
             .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .Where(n => n.Length > 0)
@@ -676,19 +736,26 @@ public sealed partial class IpIndiaPortalPage : Page
                 // the cell after "Class" is the "Filing Mode" header, and the
                 // class came back reading "Filing Mode". One reader, used
                 // everywhere, cannot drift like that again.
+                // Waits for the page to show THIS number, not merely to show
+                // something. Polling on "is anything readable" broke out on the
+                // previous application's result, which was still on screen while
+                // the new one was still in flight - see ResultMatchesRequest.
                 System.Text.Json.JsonElement? payload = null;
                 for (var attempt = 0; attempt < 8; attempt++)
                 {
                     payload = await RunScriptAsync(PortalScripts.ReadStatusResult);
-                    if (HasReadableResult(payload)) break;
+                    if (ResultMatchesRequest(payload, number)) break;
                     await System.Threading.Tasks.Task.Delay(1000);
                 }
 
-                if (payload is not { } result || !HasReadableResult(payload))
+                if (payload is not { } result || !ResultMatchesRequest(payload, number))
                 {
                     _bulkResults.Add(new FetchedStatusRow(number,
-                        "The page never showed a result for this number. If a CAPTCHA is waiting, " +
-                        "solve it and press View, then run this again.", false));
+                        HasReadableResult(payload)
+                            ? "The page is still showing a different application number, so nothing was " +
+                              "recorded for this one. Give the portal a moment and run it again."
+                            : "The page never showed a result for this number. If a CAPTCHA is waiting, " +
+                              "solve it and press View, then run this again.", false));
                     continue;
                 }
 
@@ -740,6 +807,9 @@ public sealed partial class IpIndiaPortalPage : Page
     /// </summary>
     private async void GuidedEStatus_Click(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
     {
+        using var run = BeginRun("The guided e-Status run");
+        if (!run.Started) return;
+
         var numbers = (BulkNumbersBox.Text ?? "")
             .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .Where(n => n.Length > 0).Distinct().ToList();
@@ -823,7 +893,12 @@ public sealed partial class IpIndiaPortalPage : Page
             var reading = statusPayload is { } sp ? ReadResult(sp) : null;
             var markName = reading?.MarkName ?? "";
 
-            if (matter is not null && reading is not null)
+            // The checkbox is honoured here too. The other two callers both gate
+            // this on ApplyStatusCheck; the guided run did not, so a user who
+            // deliberately unticked "Also update matter status from the portal"
+            // - usually because they do not trust today's reading - had the
+            // status, class, proprietor, filing date and title written anyway.
+            if (matter is not null && reading is not null && ApplyStatusCheck.IsChecked == true)
                 ApplyReadingToMatter(matter, reading);
 
             // --- both document panels ---
@@ -872,6 +947,9 @@ public sealed partial class IpIndiaPortalPage : Page
     /// </summary>
     private async void FetchDocuments_Click(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
     {
+        using var run = BeginRun("The document fetch");
+        if (!run.Started) return;
+
         var numbers = (BulkNumbersBox.Text ?? "")
             .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .Where(n => n.Length > 0)
@@ -940,19 +1018,26 @@ public sealed partial class IpIndiaPortalPage : Page
                 // The result loads by AJAX, so there is no navigation event to
                 // await. Wait for the reader to actually see a result rather
                 // than guessing at a fixed delay.
+                // Same identity check as the fetch path. This one matters more,
+                // because the documents filed below are filed against the matter
+                // for `number` - reading a stale page here files one mark's
+                // examination report against another mark's docket.
                 System.Text.Json.JsonElement? statusPayload = null;
                 for (var attempt = 0; attempt < 8; attempt++)
                 {
                     statusPayload = await RunScriptAsync(PortalScripts.ReadStatusResult);
-                    if (HasReadableResult(statusPayload)) break;
+                    if (ResultMatchesRequest(statusPayload, number)) break;
                     await System.Threading.Tasks.Task.Delay(1000);
                 }
 
-                if (statusPayload is not { } shown || !HasReadableResult(statusPayload))
+                if (statusPayload is not { } shown || !ResultMatchesRequest(statusPayload, number))
                 {
                     _bulkResults.Add(new FetchedStatusRow(number,
-                        "The page never showed a result for this number - if a CAPTCHA is waiting, " +
-                        "solve it and press View, then run this again.", false));
+                        HasReadableResult(statusPayload)
+                            ? "The page is still showing a different application number, so nothing was " +
+                              "read or filed for this one. Give the portal a moment and run it again."
+                            : "The page never showed a result for this number - if a CAPTCHA is waiting, " +
+                              "solve it and press View, then run this again.", false));
                     continue;
                 }
 
@@ -1044,8 +1129,18 @@ public sealed partial class IpIndiaPortalPage : Page
                 Add("Filed", ApplicationDate);
                 Add("Type", TmType);
                 Add("Filing mode", FilingMode);
-                Add("Proprietor", ProprietorName ?? Proprietor);
-                if (!string.IsNullOrWhiteSpace(ProprietorName)) Add("Use claim", Proprietor);
+                // NO FALLING BACK FROM Proprietor Name TO User Detail.
+                //
+                // This is the original "proprietor recorded as Proposed to be
+                // used" bug, still alive in the display layer after the database
+                // write was fixed. Proprietor is read from the User Detail
+                // column - the use claim - and where the proprietor header is
+                // spelled in a way `pick` does not match, ProprietorName comes
+                // back empty and this printed "Proprietor: Proposed to be used".
+                // CopyBulkReport then pastes that straight into a client email.
+                // Better to show nothing than to show the use claim as the owner.
+                Add("Proprietor", ProprietorName);
+                Add("Use claim", Proprietor);
                 Add("Valid upto", ValidUpto);
                 Add("As on", AsOn);
 
@@ -1081,6 +1176,106 @@ public sealed partial class IpIndiaPortalPage : Page
                named.ValueKind == JsonValueKind.Object &&
                (!string.IsNullOrWhiteSpace(Text(named, "trademarkNo")) ||
                 !string.IsNullOrWhiteSpace(Text(named, "markName")));
+    }
+
+    /// <summary>
+    /// True when the page on screen is showing the application that was asked
+    /// for - not the previous one.
+    ///
+    /// NOTHING USED TO CHECK THIS, and it is the difference between a docket
+    /// entry that is right and one that is wrong about the wrong mark.
+    /// HasReadableResult goes true the instant ANY status text is on screen, and
+    /// after submitting a new number the PREVIOUS result is still rendered until
+    /// the round-trip lands. In a bulk run over 7050751 then 7050752, the first
+    /// poll fires immediately, sees mark 1 still displayed, breaks out of the
+    /// wait, and mark 1's class, proprietor and filing date are written onto
+    /// matter 2 - and then mark 1's examination report is filed against matter 2
+    /// as well. Both look completely successful.
+    ///
+    /// Comparing digits only, because the page renders the number with spaces
+    /// and the odd stray character, and a run of digits is the part that
+    /// identifies an application.
+    /// </summary>
+    private static bool ResultMatchesRequest(System.Text.Json.JsonElement? payload, string requested)
+    {
+        if (payload is not { } root) return false;
+
+        var shown = root.TryGetProperty("named", out var named) && named.ValueKind == JsonValueKind.Object
+            ? Text(named, "trademarkNo")
+            : null;
+
+        // If the reader could not find a number at all we cannot prove it is
+        // stale, and refusing every such page would break the pages that only
+        // ever render a status line. Fall back to the readability test.
+        if (string.IsNullOrWhiteSpace(shown)) return HasReadableResult(payload);
+
+        return DigitsOf(shown) == DigitsOf(requested);
+    }
+
+    private static string DigitsOf(string? value) =>
+        new((value ?? string.Empty).Where(char.IsDigit).ToArray());
+
+    /// <summary>
+    /// The real content type of a captured download, read from its leading
+    /// bytes, or null if it is not a document at all.
+    ///
+    /// The bytes are the only trustworthy source here. The click-and-capture
+    /// path has no HTTP response to consult, and it used to simply assert
+    /// "application/pdf" over whatever arrived - wrong in two ways. An expired
+    /// session yields an HTML login page, which was being filed against the
+    /// matter as an examination report; and a great many genuine IP India
+    /// attachments are TIFF rather than PDF, so every one of those was stored
+    /// under a type it does not have.
+    /// </summary>
+    private static string? SniffContentType(byte[] bytes)
+    {
+        if (bytes.Length < 8) return null;
+
+        bool Starts(params byte[] magic) =>
+            bytes.Length >= magic.Length && !magic.Where((b, i) => bytes[i] != b).Any();
+
+        if (Starts(0x25, 0x50, 0x44, 0x46)) return "application/pdf";      // %PDF
+        if (Starts(0x49, 0x49, 0x2A, 0x00)) return "image/tiff";           // II*\0
+        if (Starts(0x4D, 0x4D, 0x00, 0x2A)) return "image/tiff";           // MM\0*
+        if (Starts(0xFF, 0xD8, 0xFF)) return "image/jpeg";
+        if (Starts(0x89, 0x50, 0x4E, 0x47)) return "image/png";
+        if (Starts(0x50, 0x4B, 0x03, 0x04)) return "application/zip";      // also docx/xlsx
+        if (Starts(0xD0, 0xCF, 0x11, 0xE0)) return "application/msword";   // legacy Office
+
+        // Anything whose first bytes read as markup is a web page, whatever the
+        // server chose to call it.
+        var head = System.Text.Encoding.ASCII
+            .GetString(bytes, 0, Math.Min(512, bytes.Length))
+            .TrimStart('\uFEFF', ' ', '\r', '\n', '\t');
+
+        if (head.StartsWith("<!DOCTYPE", StringComparison.OrdinalIgnoreCase) ||
+            head.StartsWith("<html", StringComparison.OrdinalIgnoreCase) ||
+            head.StartsWith("<?xml", StringComparison.OrdinalIgnoreCase) ||
+            head.Contains("<title>", StringComparison.OrdinalIgnoreCase))
+            return null;
+
+        // Unrecognised but not markup: let it through rather than lose a real
+        // document to an unusual format.
+        return "application/octet-stream";
+    }
+
+    /// <summary>
+    /// Every valid Nice class in the register's class cell, comma-separated and
+    /// de-duplicated, or an empty string if there is not one. Handles "9",
+    /// "9, 42", "25 & 35" and "Class 9 and 42" alike.
+    /// </summary>
+    private static string NormaliseClasses(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return string.Empty;
+
+        var classes = System.Text.RegularExpressions.Regex
+            .Matches(value, @"\d{1,2}")
+            .Select(m => int.Parse(m.Value))
+            .Where(n => n is >= 1 and <= 45)
+            .Distinct()
+            .ToList();
+
+        return classes.Count == 0 ? string.Empty : string.Join(", ", classes);
     }
 
     /// <summary>Turns the reader's JSON into the typed reading everything else uses.</summary>
@@ -1135,12 +1330,19 @@ public sealed partial class IpIndiaPortalPage : Page
             App.DocumentIngest.ApplyStatus(matter.Id, reading.Status, null))
             changed = true;
 
+        // A MULTI-CLASS FILING USED TO LOSE ITS CLASS SILENTLY.
+        //
+        // The register renders a multi-class application as "9, 42" or "25 & 35".
+        // int.TryParse fails on both, the whole condition went false, nothing was
+        // written and NO note was produced anywhere - while the on-screen summary
+        // still printed "Class: 9, 42", so the run looked like it had docketed
+        // the class. Every class in the reading is now kept, in the register's
+        // own order, and the value is only rejected if not one number in it is a
+        // real Nice class.
         if (string.IsNullOrWhiteSpace(matter.NiceClass) &&
-            !string.IsNullOrWhiteSpace(reading.NiceClass) &&
-            int.TryParse(reading.NiceClass.Trim(), out var niceClass) &&
-            niceClass is >= 1 and <= 45)
+            NormaliseClasses(reading.NiceClass) is { Length: > 0 } classes)
         {
-            matter.NiceClass = niceClass.ToString();
+            matter.NiceClass = classes;
             changed = true;
         }
 
@@ -1297,8 +1499,32 @@ public sealed partial class IpIndiaPortalPage : Page
                         {
                             try
                             {
-                                content = await System.IO.File.ReadAllBytesAsync(captured);
-                                contentType = "application/pdf";
+                                var bytes = await System.IO.File.ReadAllBytesAsync(captured);
+
+                                // NOTHING used to be checked here, and this is
+                                // the NORMAL path on this site - the fetch
+                                // branch above has an explicit session check and
+                                // a size floor, and this one had neither. When
+                                // the session lapsed mid-run, clicking View
+                                // returned the login page, and those bytes were
+                                // read, labelled application/pdf and filed
+                                // against the matter as "EXAMINATION REPORT".
+                                // The user finds out months later, when the PDF
+                                // will not open.
+                                var sniffed = SniffContentType(bytes);
+
+                                if (sniffed is null)
+                                {
+                                    // Looks like a web page rather than a
+                                    // document: the session is the usual reason.
+                                    sessionLost = true;
+                                    notes.Add($"{description}: the portal returned a web page instead of the " +
+                                              "document, which normally means the session expired. Nothing was filed.");
+                                    break;
+                                }
+
+                                content = bytes;
+                                contentType = sniffed;
                             }
                             finally
                             {
@@ -1334,9 +1560,41 @@ public sealed partial class IpIndiaPortalPage : Page
                 }
             }
 
-            // Close the modal so the next panel button is clickable again.
-            await RunScriptAsync(PortalScripts.OpenResultPanel, new { panel = "close" });
+            // Close the modal so the next panel button is clickable again - and
+            // CHECK THAT IT CLOSED. The script returns `closed`, and that result
+            // used to be thrown away. When a modal fails to close, the next
+            // panel's button is behind the overlay: click() does not throw, so
+            // the open step reports success, the reader then re-reads the STILL
+            // OPEN previous panel, and every document in it is downloaded and
+            // ingested a second time under the next panel's category. The same
+            // paper, filed twice against one matter, under two different
+            // headings, with nothing to indicate it.
+            var closeResult = await RunScriptAsync(PortalScripts.OpenResultPanel, new { panel = "close" });
             await System.Threading.Tasks.Task.Delay(600);
+
+            var closed = closeResult is { } cr &&
+                         cr.TryGetProperty("closed", out var closedEl) &&
+                         closedEl.ValueKind == JsonValueKind.True;
+
+            if (!closed)
+            {
+                // One retry, then stop rather than risk re-filing.
+                await RunScriptAsync(PortalScripts.OpenResultPanel, new { panel = "close" });
+                await System.Threading.Tasks.Task.Delay(800);
+
+                var retry = await RunScriptAsync(PortalScripts.OpenResultPanel, new { panel = "close" });
+                var reallyClosed = retry is { } rr &&
+                                   rr.TryGetProperty("closed", out var rc) &&
+                                   rc.ValueKind == JsonValueKind.True;
+
+                if (!reallyClosed)
+                {
+                    notes.Add($"The {panel} panel would not close, so the remaining panels were skipped - " +
+                              "reading them with it still open would have filed its documents again under " +
+                              "another category.");
+                    break;
+                }
+            }
         }
 
         return new PanelFileResult(filed, skipped, sessionLost, notes);

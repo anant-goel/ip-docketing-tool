@@ -113,18 +113,50 @@ public sealed class HeadlessJournalDownloader : IDisposable
     {
         if (date is not { } d) return Array.Empty<string>();
 
+        // InvariantCulture, on every one of these. Without it these are
+        // CURRENT-CULTURE format strings, and "/" in a .NET format string is not
+        // a slash - it is the culture's date separator placeholder. On a German
+        // machine "dd/MM/yyyy" renders 17.08.2026, on a French one "dd-MMM-yyyy"
+        // renders 17-août-2026, and on a Thai one the year comes out 2569.
+        // cellMatches compares these for exact equality against the page's
+        // "17/08/2026", so every row failed to match, ListLinksAsync returned an
+        // empty list, and the user was told the issue has no links - with
+        // nothing anywhere to suggest the machine's locale was the reason.
+        // JournalFetchService.ParseDate was fixed for exactly this; this half
+        // was missed.
+        var inv = System.Globalization.CultureInfo.InvariantCulture;
+
         return new[]
         {
-            d.ToString("dd/MM/yyyy"),
-            d.ToString("d/M/yyyy"),
-            d.ToString("dd-MM-yyyy"),
-            d.ToString("dd.MM.yyyy"),
-            d.ToString("ddMMMyyyy"),
-            d.ToString("dd-MMM-yyyy"),
+            d.ToString("dd/MM/yyyy", inv),
+            d.ToString("d/M/yyyy", inv),
+            d.ToString("dd-MM-yyyy", inv),
+            d.ToString("dd.MM.yyyy", inv),
+            d.ToString("ddMMMyyyy", inv),
+            d.ToString("dd-MMM-yyyy", inv),
+            d.ToString("dd MMM yyyy", inv),
+            d.ToString("MMM d, yyyy", inv),
         };
     }
 
     private void Report(string message) => Progress?.Invoke(message);
+
+    /// <summary>True when the file actually begins with "%PDF-".</summary>
+    private static bool StartsWithPdfHeader(string path)
+    {
+        try
+        {
+            using var stream = File.OpenRead(path);
+            Span<byte> header = stackalloc byte[5];
+            return stream.Read(header) == 5 &&
+                   header[0] == (byte)'%' && header[1] == (byte)'P' &&
+                   header[2] == (byte)'D' && header[3] == (byte)'F' && header[4] == (byte)'-';
+        }
+        catch
+        {
+            return false;
+        }
+    }
 
     /// <summary>
     /// One download link in an issue's row.
@@ -210,13 +242,26 @@ public sealed class HeadlessJournalDownloader : IDisposable
             var operation = args.DownloadOperation;
             var path = args.ResultFilePath;
 
-            operation.StateChanged += (_, _) => Settle(operation, path);
+            // THE WAIT THIS DOWNLOAD BELONGS TO, captured now.
+            //
+            // Settle used to read the _downloadDone FIELD at the moment it
+            // fired, which meant a download from an ABANDONED wait could
+            // complete a LATER one. Concretely: link A stalls and times out,
+            // link B starts and installs a fresh TCS, then A's download
+            // finally completes and hands A's file to B's waiter. B is
+            // reported as saved, with A's bytes, under B's label - the class
+            // 1-9 PDF recorded and searched as class 26-34, showing green.
+            // Capturing the TCS pins each download to the wait that started it,
+            // so a late arrival resolves nothing.
+            var waiter = _downloadDone;
+
+            operation.StateChanged += (_, _) => Settle(operation, path, waiter);
 
             // BUG FIX: a small or cached file can finish before this handler is
             // attached, so StateChanged never fires again and the wait times
             // out with "no download started" - even though the file is already
             // on disk. Checking the current state immediately closes that race.
-            Settle(operation, path);
+            Settle(operation, path, waiter);
         }
         catch (Exception ex)
         {
@@ -225,16 +270,19 @@ public sealed class HeadlessJournalDownloader : IDisposable
         }
     }
 
-    private void Settle(CoreWebView2DownloadOperation operation, string path)
+    private void Settle(CoreWebView2DownloadOperation operation, string path,
+                        TaskCompletionSource<string?>? waiter)
     {
+        if (waiter is null) return;
+
         switch (operation.State)
         {
             case CoreWebView2DownloadState.Completed:
-                _downloadDone?.TrySetResult(path);
+                waiter.TrySetResult(path);
                 break;
 
             case CoreWebView2DownloadState.Interrupted:
-                _downloadDone?.TrySetResult(null);
+                waiter.TrySetResult(null);
                 break;
         }
     }
@@ -287,12 +335,24 @@ public sealed class HeadlessJournalDownloader : IDisposable
                 var wanted = {{JsonSerializer.Serialize(journalNumber ?? "")}};
                 var wantedDates = {{JsonSerializer.Serialize(DateCandidates(publicationDate))}};
 
-                function cellMatches(text) {
-                    var t = (text || '').replace(/\u00a0/g, ' ').replace(/\s+/g, '').trim();
+                function squash(s) {
+                    return (s || '').replace(/\u00a0/g, ' ').replace(/\s+/g, '').toUpperCase();
+                }
+
+                function matchesNumber(text) {
+                    var t = squash(text);
+                    return !!(wanted && t === squash(wanted));
+                }
+
+                function matchesDate(text) {
+                    var t = squash(text);
                     if (!t) return false;
-                    if (wanted && t === wanted) return true;
                     for (var d = 0; d < wantedDates.length; d++) {
-                        if (t === wantedDates[d]) return true;
+                        // Both sides squashed. The cell text had its whitespace
+                        // stripped while the candidates kept theirs, so any
+                        // candidate containing a space - "17 Aug 2026",
+                        // "Aug 17, 2026" - could never match anything.
+                        if (t === squash(wantedDates[d])) return true;
                     }
                     return false;
                 }
@@ -348,10 +408,28 @@ public sealed class HeadlessJournalDownloader : IDisposable
                     // [Sr.No | Journal No | Date of Publication | Date of
                     // Availability | Download...], so a match on the publication
                     // date lives in cell 2 and the availability date in cell 3.
-                    var isRow = false;
+                    // WHEN A JOURNAL NUMBER IS GIVEN, IT DECIDES.
+                    //
+                    // This used to be a plain OR across the first four cells, so
+                    // a match on ANY of them - including cell 3, the Date of
+                    // Availability - selected the row. Journal 2273 is published
+                    // on the 10th and available on the 17th; journal 2274 is
+                    // published on the 17th. Ask for 2274 by number AND date and
+                    // the 2273 row matched first on its availability cell, and
+                    // its links were returned as 2274's. The wrong week's PDFs
+                    // were then downloaded under the requested issue's name, and
+                    // nothing ever re-checked the row.
+                    var numberMatched = false;
+                    var dateMatched = false;
+
                     for (var c = 0; c < Math.min(4, cells.length); c++) {
-                        if (cellMatches(cells[c].innerText)) { isRow = true; break; }
+                        if (matchesNumber(cells[c].innerText)) numberMatched = true;
+                        if (matchesDate(cells[c].innerText)) dateMatched = true;
                     }
+
+                    // A number, when supplied, must match. The date alone is
+                    // only allowed to identify the row when no number was given.
+                    var isRow = wanted ? numberMatched : dateMatched;
                     if (!isRow) continue;
 
                     // The Download column holds ICON links - an <img> inside an
@@ -455,9 +533,24 @@ public sealed class HeadlessJournalDownloader : IDisposable
                     if (!el) return "no-element";
 
                     var expected = {{JsonSerializer.Serialize(link.Label)}};
+
+                    // The label was derived from the <img> INSIDE the anchor -
+                    // its alt, title or filename - because these are icon links
+                    // with no text of their own. This check only looked at the
+                    // anchor's own attributes, which an <a> never carries, so
+                    // `actual` was the empty string and EVERY genuine postback
+                    // icon link was rejected as "moved" - blaming a race that
+                    // had not happened. The image is now read too.
+                    var img = el.querySelector ? el.querySelector('img') : null;
+                    var imgSrc = img ? (img.getAttribute('src') || '') : '';
+
                     var actual = ((el.innerText || '') + ' ' + (el.value || '') + ' ' +
                                   (el.getAttribute('title') || '') + ' ' +
-                                  (el.getAttribute('alt') || '')).replace(/\s+/g, ' ').trim();
+                                  (el.getAttribute('alt') || '') + ' ' +
+                                  (el.getAttribute('href') || '') + ' ' +
+                                  (img ? (img.getAttribute('alt') || '') + ' ' +
+                                         (img.getAttribute('title') || '') + ' ' +
+                                         imgSrc : '')).replace(/\s+/g, ' ').trim();
 
                     // Only insist when we recorded a real name. Icon links are
                     // named "Download 3" by position, and checking those against
@@ -484,10 +577,15 @@ public sealed class HeadlessJournalDownloader : IDisposable
                 return new DownloadOutcome(link.Label, false, null, 0, "The link could not be found on the page.");
         }
 
-        var finished = await Task.WhenAny(_downloadDone.Task, Task.Delay(timeout));
-        _pendingTargetPath = null;
+        var waiter = _downloadDone;
+        var finished = await Task.WhenAny(waiter.Task, Task.Delay(timeout));
 
-        if (finished != _downloadDone.Task)
+        // Both cleared together. Leaving _downloadDone pointing at an abandoned
+        // wait is how a late download used to settle the next link's result.
+        _pendingTargetPath = null;
+        _downloadDone = null;
+
+        if (finished != waiter.Task)
         {
             // No file arrived. Before reporting a timeout, look at what the page
             // actually became - because the interesting case is that the click
@@ -505,7 +603,7 @@ public sealed class HeadlessJournalDownloader : IDisposable
             return new DownloadOutcome(link.Label, false, null, 0, diagnosis);
         }
 
-        var path = _downloadDone.Task.Result;
+        var path = waiter.Task.Result;
         if (path is null || !File.Exists(path))
             return new DownloadOutcome(link.Label, false, null, 0, "The download was interrupted.");
 
@@ -517,6 +615,16 @@ public sealed class HeadlessJournalDownloader : IDisposable
             try { File.Delete(path); } catch { }
             return new DownloadOutcome(link.Label, false, null, info.Length,
                 $"Only {info.Length} bytes arrived - that is an error page, not the Journal.");
+        }
+
+        // Size alone was standing in for "is this a PDF", and a large HTML error
+        // page passes that test comfortably. The header is the actual answer.
+        if (!StartsWithPdfHeader(path))
+        {
+            try { File.Delete(path); } catch { }
+            return new DownloadOutcome(link.Label, false, null, info.Length,
+                $"{info.Length:N0} bytes arrived but the file is not a PDF - it has no PDF header. " +
+                "The Registry most likely served an error page.");
         }
 
         return new DownloadOutcome(link.Label, true, path, info.Length, null);

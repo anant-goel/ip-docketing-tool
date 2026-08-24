@@ -176,19 +176,98 @@ public sealed class AiOrchestrator
         return collapsed.Trim(' ', '.', ',', ';', ':', '"', '\'', '-', '–').ToUpperInvariant();
     }
 
+    /// <summary>Asks one provider which models the installed key can reach.</summary>
+    public Task<AiModelList> ListModelsAsync(AiProviderKind kind, CancellationToken ct = default)
+        => _providers.First(p => p.Kind == kind).ListModelsAsync(ct);
+
     /// <summary>
-    /// Sends a one-token question to check a key works. Used by "Test" in
-    /// Settings, and it bypasses the consent gate on purpose: it transmits a
-    /// fixed word, never a client document.
+    /// Checks a provider in two stages and reports which one failed. Bypasses
+    /// the consent gate on purpose: it transmits a fixed word, never a client
+    /// document.
+    ///
+    /// WHY TWO STAGES
+    ///
+    /// A single chat call cannot distinguish the two things that actually go
+    /// wrong. A rejected key and a retired model name both come back as one line
+    /// of red text, and the user's next move is completely different in each
+    /// case - replace the key, or replace the model. Guessing wrong wastes an
+    /// afternoon.
+    ///
+    /// So: list the catalogue first. That is a GET, it costs nothing, and it
+    /// exercises authentication WITHOUT naming a model. If it fails, the key is
+    /// the problem and the model name is irrelevant. If it succeeds, the key is
+    /// good, and the configured model can be checked against the returned list
+    /// BEFORE spending a request on it - so a retired name is reported as a
+    /// retired name, with the live alternatives listed.
     /// </summary>
-    public async Task<AiResponse> TestAsync(AiProviderKind kind, CancellationToken ct = default)
+    public async Task<AiDiagnostic> TestAsync(AiProviderKind kind, CancellationToken ct = default)
     {
         var provider = _providers.First(p => p.Kind == kind);
+        var model = Settings.ModelFor(kind);
 
         if (!provider.IsConfigured)
-            return AiResponse.Fail(kind, "No API key is configured for this provider.", TimeSpan.Zero);
+            return new AiDiagnostic(kind, false, false, Array.Empty<AiModelInfo>(),
+                $"No {kind} API key is configured. Paste one into the box and press Save first.");
 
-        return await provider.AskAsync(
+        // Stage one: is the key any good at all?
+        var catalogue = await provider.ListModelsAsync(ct);
+
+        if (!catalogue.Succeeded)
+            return new AiDiagnostic(kind, false, false, Array.Empty<AiModelInfo>(),
+                $"{kind} rejected the key before any model was named, so the model in the box is " +
+                $"not the problem. {catalogue.Error}");
+
+        // Stage two: does the model in Settings still exist?
+        if (!catalogue.Contains(model))
+        {
+            var suggestions = Suggest(catalogue.Models, model);
+
+            return new AiDiagnostic(kind, true, false, catalogue.Models,
+                $"The {kind} key works - {catalogue.Models.Count} models are available to it - but " +
+                $"\"{model}\" is not one of them. It has most likely been retired. " +
+                (suggestions.Length > 0
+                    ? $"Try one of these instead: {string.Join(", ", suggestions)}."
+                    : "Check the provider's model list for a current name."));
+        }
+
+        // Both look right, so actually spend one tiny request proving it.
+        var answer = await provider.AskAsync(
             new AiRequest("Reply with the single word OK.", "OK?", MaxTokens: 16), ct);
+
+        return answer.Succeeded
+            ? new AiDiagnostic(kind, true, true, catalogue.Models,
+                $"{kind} answered in {answer.Duration.TotalMilliseconds:0} ms using {model}. " +
+                $"Key and model both work; {catalogue.Models.Count} models are available to this key.")
+            : new AiDiagnostic(kind, true, false, catalogue.Models,
+                $"The {kind} key works and \"{model}\" is in its model list, but the request itself " +
+                $"failed: {answer.Error}");
+    }
+
+    /// <summary>
+    /// A few plausible replacements for a model name that no longer exists.
+    ///
+    /// Prefers names sharing the configured model's family prefix, so a dead
+    /// "gemini-2.0-flash" suggests other flash models rather than the first
+    /// three entries of an alphabetical list.
+    /// </summary>
+    private static string[] Suggest(IReadOnlyList<AiModelInfo> models, string wanted)
+    {
+        var stem = new string(wanted.TakeWhile(c => c != '-').ToArray());
+
+        var family = wanted.Contains("flash", StringComparison.OrdinalIgnoreCase) ? "flash"
+                   : wanted.Contains("sonnet", StringComparison.OrdinalIgnoreCase) ? "sonnet"
+                   : wanted.Contains("haiku", StringComparison.OrdinalIgnoreCase) ? "haiku"
+                   : wanted.Contains("opus", StringComparison.OrdinalIgnoreCase) ? "opus"
+                   : wanted.Contains("mini", StringComparison.OrdinalIgnoreCase) ? "mini"
+                   : null;
+
+        var ranked = models
+            .Select(m => m.Id)
+            .OrderByDescending(id => family is not null && id.Contains(family, StringComparison.OrdinalIgnoreCase))
+            .ThenByDescending(id => stem.Length > 2 && id.StartsWith(stem, StringComparison.OrdinalIgnoreCase))
+            .Take(3)
+            .ToArray();
+
+        return ranked;
     }
 }

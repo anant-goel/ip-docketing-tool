@@ -1092,9 +1092,13 @@ public sealed partial class JournalPage : Page
                 {
                     var savedPath = App.JournalSearch.SavePageExtract(hit, savedDir);
                     summary.AppendLine($"• {hit.Location} — published {hit.PublicationDate:dd MMM yyyy}");
-                    summary.AppendLine($"  matched: {hit.MatchedText}");
+                    // Hits arrive strongest-first now, and the quality label says
+                    // which kind each one is - an exact name against a page that
+                    // merely shares most of the words is the difference between
+                    // the answer and a page to skim past.
+                    summary.AppendLine($"  matched: {hit.MatchedText}  [{hit.MatchQuality}]");
                     if (hit.FromOcr) summary.AppendLine("  (page text came from OCR — verify against the PDF)");
-                    summary.AppendLine($"  page text saved to: {savedPath}");
+                    summary.AppendLine($"  extract saved to: {savedPath}");
                     summary.AppendLine();
                 }
             }

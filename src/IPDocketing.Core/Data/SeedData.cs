@@ -13,8 +13,14 @@ public static class SeedData
 {
     public static void EnsureSeeded(AppDbContext db)
     {
-        db.Database.EnsureCreated();
-
+        // EnsureCreated() used to be called here, and has been removed.
+        //
+        // EnsureCreated and migrations must never be mixed. EnsureCreated builds
+        // the schema straight from the model and writes NO migration history, so
+        // a database it creates looks to EF like one that has had nothing
+        // applied - and the first real migration then tries to create tables
+        // that already exist. Creating the schema is DatabaseMigrator's job
+        // alone now, and it runs before this. Seeding just seeds.
         if (db.CountryRules.Any())
             return;
 

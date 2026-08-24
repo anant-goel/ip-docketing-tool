@@ -104,18 +104,40 @@ public class JournalMarkParser
         @"(?<app>\b\d{6,8}\b)\s+(?<date>\d{1,2}[/\-.]\d{1,2}[/\-.]\d{2,4})",
         RegexOptions.Compiled);
 
+    /// <summary>A line ending in an application-number-shaped token.</summary>
+    private static readonly Regex TrailingAppNumber = new(@"\b\d{6,8}\s*$", RegexOptions.Compiled);
+
     private static readonly Regex ClassLine = new(
         @"\bclass\s*[:\-]?\s*(?<cls>\d{1,2})\b",
         RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
     // Boilerplate that appears in every entry and is never a mark.
+    //
+    // "class " used to be in this list, with a trailing space, and that single
+    // space let the class line be selected as the published mark. The file's own
+    // ClassLine regex above deliberately allows no separator - Class30, Class:30,
+    // CLASS-30 - so the parser anticipated those forms in one place and failed to
+    // filter them in another. A block reading
+    //     4123456   15/03/2019 / CLASS-30 / AMRITDHARA / BHATIA FOODS PVT LTD
+    // yielded the mark "CLASS-30" with a confidence of 100, so the garbage entry
+    // was presented as the one that did NOT need checking, and AMRITDHARA was
+    // never compared against the portfolio at all. Class lines are now matched
+    // structurally, below.
     private static readonly string[] NoiseMarkers =
     {
-        "trade marks journal", "class ", "used since", "proposed to be used",
+        "trade marks journal", "used since", "proposed to be used",
         "address for service", "advertised before acceptance", "page ",
         "registration of this trade mark", "subject to", "association with",
         "the mark is limited", "no exclusive right", "priority claimed"
     };
+
+    /// <summary>
+    /// A line that is nothing but a class reference, in any of the spellings
+    /// ClassLine accepts.
+    /// </summary>
+    private static readonly Regex ClassOnlyLine = new(
+        @"^\s*class(?:es)?\s*[:\-]?\s*\d{1,2}(?:\s*[-–]\s*\d{1,2})?\s*$",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
     /// <summary>
     /// Parses the whole extracted document. <paramref name="fromOcr"/> lowers
@@ -138,6 +160,19 @@ public class JournalMarkParser
         for (var i = 0; i < lines.Count; i++)
         {
             var match = EntryAnchor.Match(lines[i]);
+
+            // The number and the date are not always on one physical line. In a
+            // two-column layout, and routinely under OCR, they come through as
+            // two text runs. The text is split on '\n' before matching, so the
+            // \s+ between the two anchor groups can never span that break - the
+            // anchor simply failed, and with it EVERY mark in that entry
+            // disappeared from the parse with nothing to record the loss.
+            // Retrying against this line joined to the next recovers the entry
+            // for the cost of one extra match, and is only attempted where the
+            // line actually ends in an application-number-shaped token.
+            if (!match.Success && i + 1 < lines.Count && TrailingAppNumber.IsMatch(lines[i]))
+                match = EntryAnchor.Match(lines[i] + " " + lines[i + 1]);
+
             if (!match.Success) continue;
             anchors.Add((i, match.Groups["app"].Value, ParseDate(match.Groups["date"].Value)));
         }
@@ -184,9 +219,12 @@ public class JournalMarkParser
 
         if (candidates.Count == 0) return null;
 
+        // `l.Count(char.IsDigit) < l.Length / 2` was integer division: for a two-
+        // or three-character candidate the right-hand side is 1, so ANY digit
+        // disqualified it and a mark like "7UP" could never be chosen.
         var upper = candidates.FirstOrDefault(l =>
             l.Count(char.IsUpper) >= l.Count(char.IsLetter) * 0.7 &&
-            l.Count(char.IsDigit) < l.Length / 2);
+            l.Count(char.IsDigit) * 2 < l.Length);
 
         var chosen = upper ?? candidates[0];
         return Clean(chosen);
@@ -252,7 +290,9 @@ public class JournalMarkParser
         if (date is not null) score += 10;
 
         // A mark full of characters OCR commonly invents is a warning sign.
-        if (mark.Count(c => !char.IsLetterOrDigit(c) && !char.IsWhiteSpace(c)) > mark.Length / 4) score -= 20;
+        // (Integer division again: mark.Length / 4 is 0 for anything under four
+        // characters, so a single apostrophe cost a short mark 20 points.)
+        if (mark.Count(c => !char.IsLetterOrDigit(c) && !char.IsWhiteSpace(c)) * 4 > mark.Length) score -= 20;
 
         // OCR text is a guess, and the score should admit it.
         if (fromOcr) score -= 20;
@@ -264,6 +304,7 @@ public class JournalMarkParser
     {
         var lower = line.ToLowerInvariant();
         if (NoiseMarkers.Any(n => lower.Contains(n))) return true;
+        if (ClassOnlyLine.IsMatch(line)) return true;
         if (line.Count(char.IsDigit) > line.Length * 0.6) return true;
         return false;
     }
@@ -273,7 +314,15 @@ public class JournalMarkParser
 
     private static DateTime? ParseDate(string text)
     {
-        string[] formats = { "dd/MM/yyyy", "d/M/yyyy", "dd-MM-yyyy", "dd.MM.yyyy", "dd/MM/yy" };
+        // The anchor regex accepts \d{2,4} for the year and any of / - . as the
+        // separator, so every combination it can match needs a format here.
+        // Without the two-digit-year variants, "05-03-19" parsed as null and
+        // cost a correctly-read entry 10 confidence points.
+        string[] formats =
+        {
+            "dd/MM/yyyy", "d/M/yyyy", "dd-MM-yyyy", "d-M-yyyy", "dd.MM.yyyy", "d.M.yyyy",
+            "dd/MM/yy", "d/M/yy", "dd-MM-yy", "d-M-yy", "dd.MM.yy", "d.M.yy",
+        };
         foreach (var format in formats)
             if (DateTime.TryParseExact(text, format,
                 System.Globalization.CultureInfo.InvariantCulture,

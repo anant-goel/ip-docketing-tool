@@ -62,9 +62,15 @@ public class WatchService
         // loop, turns an O(published x portfolio) run from unbearable into
         // instant on a real portfolio - a 400-page issue against 500 marks is
         // hundreds of thousands of comparisons.
+        // The result of this was previously thrown away: the loop below destructured
+        // it as `(matter, _)` and then handed Compare the RAW title, which
+        // normalised it again - once per published mark, for every matter. The
+        // pre-computation the comment describes was real work with no effect.
+        // MarkSimilarityService.Prepare now carries the core, tokens and phonetic
+        // key too, and Compare has an overload that consumes them.
         var prepared = portfolio
-            .Select(m => (Matter: m, Normalized: MarkSimilarityService.Normalize(m.Title)))
-            .Where(x => x.Normalized.Length > 0)
+            .Select(m => (Matter: m, Mark: MarkSimilarityService.Prepare(m.Title)))
+            .Where(x => !x.Mark.IsEmpty)
             .ToList();
 
         // Alerts already raised for this issue, so a re-run never duplicates.
@@ -83,26 +89,37 @@ public class WatchService
         // pairing across re-runs.
         var existing = _db.WatchAlerts
             .Where(w => w.JournalIssueId == journalIssueId)
-            .Select(w => new { w.PublishedMark, w.MatterId })
+            .Select(w => new { w.PublishedMark, w.PublishedApplicant, w.PublishedClass, w.MatterId })
             .AsEnumerable()
-            .Select(w => AlertKey(w.PublishedMark, w.MatterId))
+            .Select(w => AlertKey(w.PublishedMark, w.PublishedApplicant, w.PublishedClass, w.MatterId))
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         foreach (var (mark, applicant, niceClass) in publishedMarks)
         {
             if (string.IsNullOrWhiteSpace(mark)) continue;
 
-            foreach (var (matter, _) in prepared)
+            // Prepared once per published mark, then reused across the whole
+            // portfolio - the other half of the fix described above.
+            var published = MarkSimilarityService.Prepare(mark);
+            if (published.IsEmpty) continue;
+
+            foreach (var (matter, prepMatter) in prepared)
             {
-                var result = _similarity.Compare(mark, matter.Title, fromOcr);
-                if (result.Score < 55) continue; // cheap reject before class work
+                var result = _similarity.Compare(published, prepMatter, fromOcr);
+
+                // Cheap reject before the class work. The floor is 52, not 55:
+                // ApplyClassWeighting can only ever ADD 8, and the alert
+                // threshold is 60, so 52 is the arithmetically correct cut. At
+                // 55 a same-class pair scoring 52-54 was discarded although it
+                // would have alerted at 60-62.
+                if (result.Score < AlertThreshold - 8) continue;
 
                 var (score, classNote) = _similarity.ApplyClassWeighting(
                     result.Score, niceClass, matter.NiceClass);
 
                 if (score < AlertThreshold) continue;
 
-                var key = AlertKey(mark, matter.Id);
+                var key = AlertKey(mark, applicant, niceClass, matter.Id);
                 if (!existing.Add(key)) continue;
 
                 var reasons = new List<string>(result.Reasons);
@@ -132,11 +149,33 @@ public class WatchService
     }
 
     /// <summary>
-    /// Identity of one alert - a published mark paired with one portfolio
-    /// matter. Built in memory, never inside a LINQ-to-SQL query.
+    /// Identity of one alert. Built in memory, never inside a LINQ-to-SQL query.
+    ///
+    /// THE APPLICANT AND CLASS ARE PART OF THE IDENTITY, and leaving them out
+    /// was silently losing alerts. The key used to be (mark, matter), but one
+    /// journal issue routinely publishes the same word for several different
+    /// applicants in several classes - AMRIT filed by Bhatia Foods in class 30
+    /// and AMRIT filed by Verma Agro in class 5 are two separate applications,
+    /// each opposable in its own right. Under the old key the second one hit
+    /// `existing.Add` returning false and was skipped with no alert, no log line
+    /// and no counter, so the opposition window could lapse with nothing on
+    /// record that it had ever been seen. Because the same key was also the
+    /// persisted cross-run dedup, re-running the issue could not recover it.
+    ///
+    /// Interior whitespace is collapsed as well as trimmed, so "SUN RISE" and
+    /// "SUN  RISE" - the same mark, one of them read by OCR - are one alert
+    /// rather than two.
     /// </summary>
-    private static string AlertKey(string? publishedMark, int matterId) =>
-        (publishedMark ?? string.Empty).Trim() + "|" + matterId.ToString();
+    private static string AlertKey(string? publishedMark, string? applicant, string? niceClass, int matterId) =>
+        string.Join('|',
+            Collapse(publishedMark),
+            Collapse(applicant),
+            Collapse(niceClass),
+            matterId.ToString());
+
+    private static string Collapse(string? value) =>
+        string.Join(' ', (value ?? string.Empty)
+            .Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
 
     public List<WatchAlert> GetAllIncludingDismissed() =>
         _db.WatchAlerts.Include(w => w.Matter).Include(w => w.JournalIssue)
@@ -256,36 +295,8 @@ footer{margin-top:34px;padding-top:10px;border-top:1px solid #d8dde6;color:#8a92
         _db.SaveChanges();
     }
 
-    /// <summary>
-    /// Normalized Levenshtein similarity (0-100). A plain edit-distance
-    /// score, not a trademark "likelihood of confusion" test -- treat
-    /// results as a shortlist to review, not a legal conclusion.
-    /// </summary>
-    private static int SimilarityScore(string a, string b)
-    {
-        a = a.Trim().ToUpperInvariant();
-        b = b.Trim().ToUpperInvariant();
-        if (a.Length == 0 || b.Length == 0) return 0;
-
-        var distance = Levenshtein(a, b);
-        var maxLen = Math.Max(a.Length, b.Length);
-        return (int)Math.Round((1.0 - (double)distance / maxLen) * 100);
-    }
-
-    private static int Levenshtein(string a, string b)
-    {
-        var dp = new int[a.Length + 1, b.Length + 1];
-        for (int i = 0; i <= a.Length; i++) dp[i, 0] = i;
-        for (int j = 0; j <= b.Length; j++) dp[0, j] = j;
-
-        for (int i = 1; i <= a.Length; i++)
-        {
-            for (int j = 1; j <= b.Length; j++)
-            {
-                var cost = a[i - 1] == b[j - 1] ? 0 : 1;
-                dp[i, j] = Math.Min(Math.Min(dp[i - 1, j] + 1, dp[i, j - 1] + 1), dp[i - 1, j - 1] + cost);
-            }
-        }
-        return dp[a.Length, b.Length];
-    }
+    // The old single-signal scorer and its full-matrix Levenshtein used to sit
+    // here. Both were dead - every score comes from MarkSimilarityService.Compare -
+    // and leaving a second, weaker implementation of the same idea in the file is
+    // an invitation to call the wrong one.
 }

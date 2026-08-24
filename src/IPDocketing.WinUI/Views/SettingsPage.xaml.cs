@@ -169,7 +169,7 @@ public sealed partial class SettingsPage : Page
         var kind = KindFromTag(button.Tag);
 
         button.IsEnabled = false;
-        AiStatusText.Text = $"Asking {kind} to reply with one word...";
+        AiStatusText.Text = $"Checking the {kind} key, then the model...";
 
         try
         {
@@ -177,11 +177,17 @@ public sealed partial class SettingsPage : Page
             // than the one saved earlier.
             SaveAiSettings();
 
+            // Two stages inside: the key is verified against the provider's own
+            // model catalogue before any model name is used, so the message can
+            // say WHICH of the two is wrong instead of just "failed".
             var result = await App.Ai.TestAsync(kind);
 
-            AiStatusText.Text = result.Succeeded
-                ? $"{kind} answered in {result.Duration.TotalMilliseconds:0} ms. The key and model both work."
-                : $"{kind} failed: {result.Error}";
+            AiStatusText.Text = result.Summary;
+
+            // A retired model name is the one failure the user can fix in a
+            // single click, so offer the fix rather than only naming it.
+            if (result.KeyAccepted && !result.ModelAccepted && result.AvailableModels.Count > 0)
+                await OfferModelPickerAsync(kind, result);
         }
         catch (Exception ex)
         {
@@ -191,6 +197,53 @@ public sealed partial class SettingsPage : Page
         {
             button.IsEnabled = true;
         }
+    }
+
+    /// <summary>
+    /// Shows the models the key can actually reach and writes the chosen one
+    /// into the model box.
+    ///
+    /// This exists because the alternative is a text box the user has to guess
+    /// into. Model names are retired on the provider's schedule, not this
+    /// application's, and when one goes the only symptom is a 404 that looks
+    /// like the software broke. A list read live from the provider turns that
+    /// into a two-second fix.
+    /// </summary>
+    private async Task OfferModelPickerAsync(AiProviderKind kind, AiDiagnostic diagnostic)
+    {
+        var list = new ListView
+        {
+            SelectionMode = ListViewSelectionMode.Single,
+            ItemsSource = diagnostic.AvailableModels.Select(m => m.ToString()).ToList(),
+            MaxHeight = 320,
+        };
+
+        var dialog = new ContentDialog
+        {
+            XamlRoot = XamlRoot,
+            Title = $"Models available to this {kind} key",
+            Content = list,
+            PrimaryButtonText = "Use selected",
+            CloseButtonText = "Leave it",
+            DefaultButton = ContentDialogButton.Primary,
+        };
+
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
+        if (list.SelectedItem is not string chosen) return;
+
+        // ToString() may append a display name in brackets; the id is the part
+        // before it, and the id is what the API accepts.
+        var id = chosen.Split(' ')[0];
+
+        switch (kind)
+        {
+            case AiProviderKind.Anthropic: AnthropicModelBox.Text = id; break;
+            case AiProviderKind.Gemini: GeminiModelBox.Text = id; break;
+            case AiProviderKind.OpenAi: OpenAiModelBox.Text = id; break;
+        }
+
+        SaveAiSettings();
+        AiStatusText.Text = $"{kind} model set to {id}. Press Test again to confirm it answers.";
     }
 
     private async void AiClearKey_Click(object sender, RoutedEventArgs e)

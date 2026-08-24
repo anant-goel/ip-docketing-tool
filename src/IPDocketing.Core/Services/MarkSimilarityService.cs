@@ -89,16 +89,43 @@ public class MarkSimilarityService
     };
 
     /// <summary>
+    /// Devanagari consonants, which carry an inherent /a/ when no vowel sign
+    /// follows them. Kept separate from the map above because the map also holds
+    /// independent vowels and vowel signs, which do not.
+    /// </summary>
+    private static readonly HashSet<char> DevanagariConsonants = new()
+    {
+        'क', 'ख', 'ग', 'घ', 'च', 'छ', 'ज', 'झ', 'ट', 'ठ', 'ड', 'ढ', 'ण',
+        'त', 'थ', 'द', 'ध', 'न', 'प', 'फ', 'ब', 'भ', 'म', 'य', 'र', 'ल',
+        'व', 'श', 'ष', 'स', 'ह',
+    };
+
+    /// <summary>
+    /// Vowel signs (matras). A consonant followed by one of these has its
+    /// inherent /a/ replaced, so no /a/ should be inserted. The anusvara is
+    /// deliberately NOT here - it is a nasal, and क + anusvara is KAN, not KN.
+    /// </summary>
+    private static readonly HashSet<char> DevanagariVowelSigns = new()
+    {
+        'ा', 'ि', 'ी', 'ु', 'ू', 'ृ',
+        'े', 'ै', 'ो', 'ौ',
+    };
+
+    /// <summary>
     /// Character groups OCR genuinely confuses. Folding these together lets a
     /// misread Journal entry still match - "S0NRISE" against "SUNRISE".
     /// </summary>
     private static readonly Dictionary<char, char> OcrConfusions = new()
     {
-        ['0'] = 'O', ['Q'] = 'O', ['D'] = 'O',
+        // U belongs with the round glyphs, not with V. It was mapped to V, and
+        // that made the one example this table is documented by fail: SUNRISE
+        // folded to SVNRISE while S0NRISE folded to SONRISE, so the two never
+        // met and signal 5 contributed nothing to its own motivating case.
+        ['0'] = 'O', ['Q'] = 'O', ['D'] = 'O', ['U'] = 'O',
         ['1'] = 'I', ['L'] = 'I', ['|'] = 'I', ['!'] = 'I',
         ['5'] = 'S', ['$'] = 'S',
         ['8'] = 'B', ['6'] = 'G', ['2'] = 'Z', ['7'] = 'T',
-        ['U'] = 'V', ['W'] = 'V',
+        ['W'] = 'V',
     };
 
     public sealed record SimilarityResult(
@@ -113,18 +140,58 @@ public class MarkSimilarityService
     }
 
     /// <summary>
+    /// One mark with everything derived from it computed once.
+    ///
+    /// This type exists for a measured reason. A watch run compares every
+    /// published mark against every portfolio matter - a 400-page issue against
+    /// 500 marks is millions of pairings - and normalisation, the distinctive
+    /// core, the token list and the phonetic key are each a pure function of ONE
+    /// side. Recomputing them inside the pair loop meant the portfolio was
+    /// re-normalised once per published mark and vice versa: tens of millions of
+    /// calls where tens of thousands do. Prepare each side once, compare many
+    /// times.
+    /// </summary>
+    public sealed record PreparedMark(
+        string Normalized,
+        string Core,
+        string Phonetic,
+        List<string> Tokens)
+    {
+        public bool IsEmpty => Normalized.Length == 0;
+    }
+
+    /// <summary>Does all the per-mark work up front. Safe to cache and reuse.</summary>
+    public static PreparedMark Prepare(string? mark)
+    {
+        var raw = Normalize(mark);
+        if (raw.Length == 0) return new PreparedMark(string.Empty, string.Empty, string.Empty, new List<string>());
+
+        var core = DistinctiveCore(raw);
+        if (core.Length == 0) core = raw.Replace(" ", "");
+
+        return new PreparedMark(raw, core, PhoneticKeyOfCore(core), DistinctiveTokens(raw));
+    }
+
+    /// <summary>
     /// Compares two marks. <paramref name="fromOcr"/> enables the confusion-
     /// tolerant signal, which is off by default because folding 0/O and 1/I on
     /// clean text creates false positives of its own.
     /// </summary>
     public SimilarityResult Compare(string markA, string markB, bool fromOcr = false)
+        => Compare(Prepare(markA), Prepare(markB), fromOcr);
+
+    /// <summary>
+    /// The same comparison against marks whose derived forms are already
+    /// computed. Use this on any path that compares one mark against many.
+    /// </summary>
+    public SimilarityResult Compare(PreparedMark a, PreparedMark b, bool fromOcr = false)
     {
         var reasons = new List<string>();
 
-        var rawA = Normalize(markA);
-        var rawB = Normalize(markB);
+        var rawA = a.Normalized;
+        var rawB = b.Normalized;
 
-        if (rawA.Length == 0 || rawB.Length == 0)
+        if (a.IsEmpty || b.IsEmpty)
             return new SimilarityResult(0, "none", reasons, rawA, rawB);
 
         if (rawA == rawB)
@@ -133,13 +200,24 @@ public class MarkSimilarityService
             return new SimilarityResult(100, "identical", reasons, rawA, rawB);
         }
 
-        var coreA = DistinctiveCore(rawA);
-        var coreB = DistinctiveCore(rawB);
+        var coreA = a.Core;
+        var coreB = b.Core;
 
-        // Where stripping leaves nothing, fall back to the full string rather
-        // than declaring a match between two piles of generic words.
-        if (coreA.Length == 0) coreA = rawA;
-        if (coreB.Length == 0) coreB = rawB;
+        // Cheap structural reject. Every signal below is bounded above by the
+        // length ratio of the two cores EXCEPT containment, which is checked
+        // explicitly here rather than assumed away. A three-letter mark against
+        // a twenty-letter one cannot reach the threshold by any route, and on a
+        // full journal run most pairs are exactly that.
+        var shortLen = Math.Min(coreA.Length, coreB.Length);
+        var longLen = Math.Max(coreA.Length, coreB.Length);
+        if (longLen > 0 && shortLen * 100 / longLen < 50 &&
+            !(coreA.Length <= coreB.Length
+                ? coreB.Contains(coreA, StringComparison.Ordinal)
+                : coreA.Contains(coreB, StringComparison.Ordinal)))
+        {
+            reasons.Add("Too different in length to be a conflict");
+            return new SimilarityResult(shortLen * 100 / longLen, "none", reasons, rawA, rawB);
+        }
 
         var best = 0;
         var primary = "none";
@@ -157,14 +235,23 @@ public class MarkSimilarityService
         Consider(edit, "spelling", $"Spelling {edit}% alike on the distinctive part ({coreA} / {coreB})");
 
         // 2. Token set - order-independent, ignores added corporate words
-        var tokenScore = TokenSetRatio(rawA, rawB);
+        var tokenScore = TokenSetRatio(a.Tokens, b.Tokens);
         if (tokenScore > 0)
             Consider(tokenScore, "tokens", $"Shares {tokenScore}% of its distinctive words regardless of order");
 
         // 3. Phonetic
-        var phoneticA = PhoneticKey(coreA);
-        var phoneticB = PhoneticKey(coreB);
-        if (phoneticA.Length > 0 && phoneticA == phoneticB)
+        var phoneticA = a.Phonetic;
+        var phoneticB = b.Phonetic;
+
+        // The length floor is the whole point. PhoneticKey drops every interior
+        // vowel, so short vowel-heavy marks collapse to a two-letter consonant
+        // skeleton and then collide wholesale: LILY, LEELA, LOLA and LULU all
+        // reduce to "LL"; MOON, MAINA and MEENA to "MN"; TATA and TITU to "TT".
+        // At 92 apiece those land at the top of the report in the high band,
+        // labelled "Sounds the same" - and enough of them across a 40,000-mark
+        // issue buries the real conflicts. Three consonants is the point at
+        // which an exact key match means something.
+        if (phoneticA.Length > 2 && phoneticA == phoneticB)
             Consider(92, "phonetic", $"Sounds the same ({phoneticA})");
         else if (phoneticA.Length > 2 && phoneticB.Length > 2)
         {
@@ -179,16 +266,42 @@ public class MarkSimilarityService
         //    a conflict signal on its own.
         var shorter = coreA.Length <= coreB.Length ? coreA : coreB;
         var longer = coreA.Length <= coreB.Length ? coreB : coreA;
-        if (shorter.Length >= 4 && longer.Contains(shorter, StringComparison.Ordinal))
+        var at = shorter.Length >= 4 ? longer.IndexOf(shorter, StringComparison.Ordinal) : -1;
+        if (at >= 0)
         {
             var coverage = (int)Math.Round(shorter.Length * 100.0 / longer.Length);
-            var containment = Math.Max(75, coverage);
+
+            // WHERE the shorter mark sits inside the longer one decides whether
+            // this is incorporation or coincidence, and the old
+            // Math.Max(75, coverage) could not tell the difference - it threw
+            // coverage away whenever it was below 75 and alerted at 75 on any
+            // four-letter run appearing anywhere. That fired on AXIS/PRAXIS,
+            // NOVA/CASANOVA, VEDA/AYURVEDANTA and KING/SMOKING GUN.
+            //
+            // A mark taken over WHOLE and added to is the real signal, and it
+            // starts at the beginning - the first syllable is what a registrar
+            // and a customer both weigh most. So a prefix match is worth a
+            // floor of 70; anything embedded mid-word or at the tail is worth
+            // only its coverage, which lets a genuinely large overlap still
+            // score while coincidental ones fall away.
+            var containment = at == 0 ? Math.Max(70, coverage) : coverage;
+
             Consider(containment, "containment",
-                $"'{shorter}' appears whole inside '{longer}'");
+                at == 0
+                    ? $"'{longer}' begins with the whole of '{shorter}'"
+                    : $"'{shorter}' appears inside '{longer}' ({coverage}% of it)");
         }
 
-        // 5. OCR-tolerant, only where the text came from OCR
-        if (fromOcr)
+        // 5. OCR-tolerant, only where the text came from OCR AND the pair is
+        //    already a near miss. The fold is applied to both sides - it has to
+        //    be, since folding one side only would leave the very characters it
+        //    is meant to reconcile still differing - and that means it can
+        //    manufacture a match out of two unrelated marks: DUO and OVO both
+        //    fold to "OVO" and scored 95. Requiring a decent unfolded score
+        //    first keeps this signal doing its actual job, which is rescuing a
+        //    mark a misread character pushed just under the line, not inventing
+        //    conflicts between marks that were never alike.
+        if (fromOcr && best >= 55)
         {
             var ocrScore = EditRatio(FoldOcr(coreA), FoldOcr(coreB));
             if (ocrScore > best + 5)
@@ -254,25 +367,105 @@ public class MarkSimilarityService
     {
         if (string.IsNullOrWhiteSpace(value)) return string.Empty;
 
-        var transliterated = new StringBuilder();
-        foreach (var ch in value)
-        {
-            if (Devanagari.TryGetValue(ch, out var latin)) transliterated.Append(latin);
-            else transliterated.Append(ch);
-        }
-
-        var decomposed = transliterated.ToString().Normalize(NormalizationForm.FormD);
+        // FormD FIRST, then transliterate. This order matters and used to be the
+        // other way round, which broke two things at once:
+        //
+        //  - Precomposed nukta letters (ज़ ड़ फ़ क़, all common on the Indian
+        //    register) are single codepoints and are NOT keys in the map, so
+        //    they fell through untranslated. Decomposing first splits each into
+        //    its base consonant plus a combining nukta, and the consonant then
+        //    transliterates normally. Before this, "ज़ायका" normalised to
+        //    "JAYKA" with a literal Devanagari codepoint still embedded, and
+        //    every downstream comparison worked on that.
+        //  - The blanket NonSpacingMark skip below discarded the vowel signs
+        //    ु ू े ै ं outright, because those are Mn characters. A mark
+        //    written with any of them lost the vowel entirely.
+        var decomposed = value.Normalize(NormalizationForm.FormD);
         var stripped = new StringBuilder();
 
-        foreach (var ch in decomposed)
+        for (var i = 0; i < decomposed.Length; i++)
         {
-            if (CharUnicodeInfo.GetUnicodeCategory(ch) == UnicodeCategory.NonSpacingMark) continue;
+            var ch = decomposed[i];
+
+            // Strip accents, but never a mark this map has a reading for.
+            if (CharUnicodeInfo.GetUnicodeCategory(ch) == UnicodeCategory.NonSpacingMark &&
+                !Devanagari.ContainsKey(ch))
+                continue;
+
+            if (Devanagari.TryGetValue(ch, out var latin))
+            {
+                // Captured BEFORE the consonant is appended - medial schwa
+                // deletion asks what sound came before it, and once the
+                // consonant is in the buffer the answer is always "a consonant".
+                var precededByVowel = stripped.Length > 0 && "AEIOU".Contains(stripped[^1]);
+
+                stripped.Append(latin);
+
+                // The inherent vowel. A Devanagari consonant with no following
+                // matra is pronounced with an /a/; without this, पहाड़ी
+                // romanises as PHADEE rather than PAHADEE - and the fused
+                // consonant pair that leaves behind then trips the digraph
+                // rewrites in PhoneticKey (PH->F), so one dropped vowel costs
+                // the spelling signal AND the phonetic one.
+                if (DevanagariConsonants.Contains(ch) &&
+                    !SuppressesInherentVowel(decomposed, i, precededByVowel))
+                    stripped.Append('A');
+
+                continue;
+            }
+
             if (char.IsLetterOrDigit(ch)) stripped.Append(char.ToUpperInvariant(ch));
             else if (char.IsWhiteSpace(ch) || ch is '-' or '&' or '/') stripped.Append(' ');
         }
 
         return string.Join(' ', stripped.ToString()
             .Split(' ', StringSplitOptions.RemoveEmptyEntries));
+    }
+
+    /// <summary>
+    /// True when the consonant at <paramref name="index"/> does NOT take its
+    /// inherent /a/.
+    ///
+    /// Three cases, and the third is the one that needs care:
+    ///
+    ///  1. A vowel sign or virama follows - the inherent vowel is replaced or
+    ///     explicitly killed.
+    ///  2. The consonant is word-final. Hindi drops the final schwa, which is
+    ///     why कमल is KAMAL and not KAMALA.
+    ///  3. Medial schwa deletion. Hindi also drops a schwa in the environment
+    ///     V C _ C V - a schwa between two consonants, where the preceding
+    ///     sound is a vowel and the following consonant carries its own vowel.
+    ///     This is what makes ज़ायका ZAYKA rather than ZAYAKA. Without the rule
+    ///     the naive "every consonant gets an A" produces a spelling nobody
+    ///     files under, and the extra vowel then fuses into a digraph that
+    ///     PhoneticKey rewrites, so the phonetic signal is lost too.
+    ///
+    /// Not a complete account of Hindi phonology - schwa deletion is
+    /// famously irregular - but it covers the ordinary shapes of the marks on
+    /// the Indian register, which is the whole job here.
+    /// </summary>
+    private static bool SuppressesInherentVowel(string text, int index, bool precededByVowel)
+    {
+        var j = index + 1;
+        while (j < text.Length && text[j] == '़') j++;   // nukta modifies the consonant
+
+        if (j >= text.Length) return true;               // word-final schwa
+        var next = text[j];
+
+        if (next == '्') return true;                    // virama
+        if (DevanagariVowelSigns.Contains(next)) return true;
+        if (next is < 'ऀ' or > 'ॿ') return true;         // space, Latin, punctuation: word end
+
+        // Medial deletion needs a vowel BEFORE it...
+        if (!precededByVowel) return false;
+
+        // ...and a following consonant that carries its own vowel.
+        if (!DevanagariConsonants.Contains(next)) return false;
+
+        var k = j + 1;
+        while (k < text.Length && text[k] == '़') k++;
+
+        return k < text.Length && DevanagariVowelSigns.Contains(text[k]);
     }
 
     /// <summary>The mark with non-distinctive words removed and spacing dropped.</summary>
@@ -290,10 +483,8 @@ public class MarkSimilarityService
     /// Order-independent overlap of distinctive tokens, weighted by token
     /// length so a shared long word counts for more than a shared short one.
     /// </summary>
-    private static int TokenSetRatio(string a, string b)
+    private static int TokenSetRatio(List<string> tokensA, List<string> tokensB)
     {
-        var tokensA = DistinctiveTokens(a);
-        var tokensB = DistinctiveTokens(b);
         if (tokensA.Count == 0 || tokensB.Count == 0) return 0;
 
         var matchedWeight = 0.0;
@@ -332,8 +523,17 @@ public class MarkSimilarityService
     /// after aspirated stops, and terminal vowels.
     /// </summary>
     public static string PhoneticKey(string value)
+        => PhoneticKeyOfCore(Normalize(value).Replace(" ", ""));
+
+    /// <summary>
+    /// The key for a string that has ALREADY been normalised and had its spaces
+    /// removed. Split out because the public entry point re-normalised its
+    /// input, and it was being handed the distinctive core - which was
+    /// normalised on the way in. That was two extra full normalisations on every
+    /// comparison, on the hottest path in the application.
+    /// </summary>
+    private static string PhoneticKeyOfCore(string s)
     {
-        var s = Normalize(value).Replace(" ", "");
         if (s.Length == 0) return string.Empty;
 
         // Order matters - longer, more specific patterns first.

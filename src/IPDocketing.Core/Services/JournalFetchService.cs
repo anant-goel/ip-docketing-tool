@@ -31,11 +31,27 @@ public class JournalFetchService
     // to look like something it isn't.
     private static readonly HttpClient Http = CreateClient();
 
+    /// <summary>How long a single Journal PDF is allowed to take. They are large.</summary>
+    private static readonly TimeSpan DownloadTimeout = TimeSpan.FromMinutes(15);
+
+    /// <summary>The listing page is small; if it has not answered in 30s it is down.</summary>
+    private static readonly TimeSpan ListingTimeout = TimeSpan.FromSeconds(30);
+
     private static HttpClient CreateClient()
     {
-        var client = new HttpClient { Timeout = TimeSpan.FromSeconds(25) };
+        // Infinite at the client level, bounded per request. One HttpClient
+        // serves both the ~100 KB listing page and multi-hundred-megabyte PDFs,
+        // and a single Timeout cannot be right for both - it was 25 seconds,
+        // which made large downloads impossible rather than slow.
+        var client = new HttpClient { Timeout = Timeout.InfiniteTimeSpan };
         client.DefaultRequestHeaders.UserAgent.ParseAdd("IPDocketing/1.0 (+desktop docketing tool)");
-        client.DefaultRequestHeaders.Accept.ParseAdd("text/html,application/xhtml+xml");
+
+        // application/pdf was missing. The same client fetches the PDFs, so it
+        // was telling the server it accepted only HTML and then raising "the
+        // server returned an HTML page rather than a PDF - the file store may be
+        // down" when a content-negotiating front end obliged. The diagnostic
+        // blamed the server for the header this client sent.
+        client.DefaultRequestHeaders.Accept.ParseAdd("application/pdf,text/html,application/xhtml+xml,*/*;q=0.8");
         return client;
     }
 
@@ -48,7 +64,16 @@ public class JournalFetchService
     /// <summary>Fetches and parses the full listing. Returns issues newest-first, matching the page's own order.</summary>
     public async Task<List<JournalIssueEntry>> FetchIssuesAsync(CancellationToken ct = default)
     {
-        var html = await Http.GetStringAsync(ListingUrl, ct);
+        using var listingBudget = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        listingBudget.CancelAfter(ListingTimeout);
+
+        var html = await Http.GetStringAsync(ListingUrl, listingBudget.Token);
+
+        // Reset per fetch. This is a diagnostic about THIS listing read, and it
+        // used to be a write-once field on a long-lived service, so the "Copy
+        // raw links" button kept showing a row captured during some earlier,
+        // unrelated fetch.
+        LastEmptyRowHtml = null;
         var doc = new HtmlDocument();
         doc.LoadHtml(html);
 
@@ -169,6 +194,8 @@ public class JournalFetchService
     public async Task<(JournalIssueEntry Issue, string ClassRangeLabel, string PdfUrl)?> FindByDateAndClassAsync(
         DateTime date, int trademarkClass, CancellationToken ct = default)
     {
+        if (!IsUsableQueryDate(date)) return null;
+
         var issues = await FetchIssuesAsync(ct);
 
         var issue = issues
@@ -195,9 +222,23 @@ public class JournalFetchService
     public async Task<List<JournalIssueEntry>> GetLatestIssuesAsync(int count = 8, CancellationToken ct = default)
     {
         var issues = await FetchIssuesAsync(ct);
-        return issues
-            .OrderByDescending(i => i.PublicationDate ?? DateTime.MinValue)
-            .Take(Math.Max(1, count))
+        var wanted = Math.Max(1, count);
+
+        // Dated issues newest-first, then anything whose date would not parse,
+        // in the listing's own order. Sorting undated rows to DateTime.MinValue
+        // dropped them off the end of the Take - and the newest issue is exactly
+        // the one most likely to arrive in a date format this parser has not
+        // seen, so the method whose whole job is "show me the newest issues"
+        // was the most likely to hide the newest issue.
+        var dated = issues
+            .Where(i => i.PublicationDate is not null)
+            .OrderByDescending(i => i.PublicationDate)
+            .ToList();
+
+        var undated = issues.Where(i => i.PublicationDate is null).ToList();
+
+        return dated.Take(wanted)
+            .Concat(undated.Take(Math.Max(0, wanted - dated.Count)))
             .ToList();
     }
 
@@ -238,14 +279,26 @@ public class JournalFetchService
         var fromUrl = Regex.Match(url, @"([^/\\?#]+)\.(?:pdf|zip)", RegexOptions.IgnoreCase);
         if (fromUrl.Success) candidates.Add(fromUrl.Groups[1].Value);
 
-        foreach (var candidate in candidates)
-        {
-            if (string.IsNullOrWhiteSpace(candidate)) continue;
-            var cleaned = Regex.Replace(HtmlEntity.DeEntitize(candidate), @"\s+", " ").Trim();
-            if (cleaned.Length is > 0 and < 120) return cleaned;
-        }
+        var usable = candidates
+            .Where(c => !string.IsNullOrWhiteSpace(c))
+            .Select(c => Regex.Replace(HtmlEntity.DeEntitize(c!), @"\s+", " ").Trim())
+            .Where(c => c.Length is > 0 and < 120)
+            .ToList();
 
-        return $"Download {ordinal}";
+        // AN INFORMATIVE LABEL BEATS A FIRST ONE.
+        //
+        // The old loop returned the first non-empty candidate, and the anchor's
+        // own text is first in the list. The Download cell renders as
+        // <a href=".../TMJ_2273_CLASS_26-34.pdf">PDF</a> or as a bare icon, so
+        // every link in the row came back labelled "PDF" or "pdf_icon" - and the
+        // URL, which names the class range explicitly, was consulted last and
+        // therefore never. Class lookup then reported "none of them say which
+        // classes they cover (they are icon links: PDF, PDF, PDF, PDF)" about a
+        // row where every href spelled it out.
+        var named = usable.FirstOrDefault(c => TryParseClassRange(c, out _, out _));
+        if (named is not null) return named;
+
+        return usable.FirstOrDefault() ?? $"Download {ordinal}";
     }
 
     /// <summary>
@@ -323,22 +376,58 @@ public class JournalFetchService
     /// found nothing.
     ///
     /// Underscores are normalised to spaces first, which collapses all three
-    /// variants into one case. Labels with no range at all - "CLASS_35_PART_1",
-    /// "NOTICE", "WELL KNOWN TRADE MARKS" - correctly return false; those are
-    /// real links, just not class-range ones.
+    /// variants into one case.
+    ///
+    /// A SINGLE CLASS IS ALSO A RANGE. This used to require two numbers and a
+    /// hyphen, and returned false for "CLASS 35" and "CLASS_35_PART_1" - the
+    /// comment here even called that "correct". It is not correct for lookup.
+    /// Class 35 is the highest-volume class on the register and is routinely
+    /// published as its own split files, so a user asking for class 35 was told
+    /// "Class 35 isn't covered by Journal 2273 - its ranges are: CLASS 1-9,
+    /// CLASS 10-25, CLASS 26-34, CLASS 36-45", a definitive-sounding statement
+    /// that it had not been published, while two files containing it sat
+    /// unlisted in the same row. A lone class now parses as the range n..n.
+    ///
+    /// Labels with no class number at all - "NOTICE", "WELL KNOWN TRADE MARKS",
+    /// "PDF" - still return false; those are real links, just not class ones.
     /// </summary>
+    /// <summary>
+    /// Rejects a date that cannot have come from a person.
+    ///
+    /// ParseDate guards SCRAPED dates with a year floor, but the date PARAMETER
+    /// was never validated - and an unset WinUI date picker hands back the WinRT
+    /// epoch, 01 Jan 1601. That sentinel was accepted as a legitimate query and
+    /// produced "No issue was published on or before 01 Jan 1601", a message
+    /// that describes the listing rather than the actual problem, which is that
+    /// no date was chosen.
+    /// </summary>
+    public static bool IsUsableQueryDate(DateTime date) => date.Year >= 1900;
+
     public static bool TryParseClassRange(string label, out int low, out int high)
     {
         low = 0;
         high = 0;
         if (string.IsNullOrWhiteSpace(label)) return false;
 
-        var normalized = label.Replace('_', ' ');
-        var match = Regex.Match(normalized, @"CLASS[\s]*(\d+)[\s]*[-\u2013][\s]*(\d+)", RegexOptions.IgnoreCase);
+        // Underscores and dots to spaces (filenames use both); every dash
+        // variant the listing has ever used folded to one; "TO" as a separator.
+        var normalized = Regex.Replace(label.Replace('_', ' ').Replace('.', ' '),
+            @"[\u2010-\u2015]", "-");
+        normalized = Regex.Replace(normalized, @"\bTO\b", "-", RegexOptions.IgnoreCase);
+
+        // CLASS or CLASSES, then n, optionally - m.
+        var match = Regex.Match(normalized,
+            @"CLASS(?:ES)?\s*[:\-]?\s*(\d{1,2})\s*(?:-\s*(\d{1,2}))?",
+            RegexOptions.IgnoreCase);
         if (!match.Success) return false;
 
         low = int.Parse(match.Groups[1].Value);
-        high = int.Parse(match.Groups[2].Value);
+        high = match.Groups[2].Success ? int.Parse(match.Groups[2].Value) : low;
+
+        // Nice classes run 1-45. Anything outside that came from a year, a
+        // volume number or an issue number that happened to follow the word.
+        if (low is < 1 or > 45 || high is < 1 or > 45) return false;
+
         return low <= high;
     }
 
@@ -371,6 +460,12 @@ public class JournalFetchService
             return ClassLookupResult.Failure(
                 "The listing page loaded but no issue rows could be parsed from it. " +
                 "Its table layout may have changed.");
+
+        if (!IsUsableQueryDate(date))
+            return ClassLookupResult.Failure(
+                $"No publication date has been chosen - the date box is reading " +
+                $"{date:dd MMM yyyy}, which is the value an unset date picker returns. " +
+                "Pick a date and try again.");
 
         var dated = issues.Where(i => i.PublicationDate is not null).ToList();
         var issue = dated
@@ -448,7 +543,23 @@ public class JournalFetchService
 
         var safeIssue = string.Concat(issueNumber.Select(c =>
             Path.GetInvalidFileNameChars().Contains(c) ? '_' : c));
-        var finalPath = Path.Combine(libraryPath, $"journal_{safeIssue}.pdf");
+
+        // THE CACHE KEY MUST INCLUDE WHICH FILE THIS IS.
+        //
+        // It used to be journal_{issue}.pdf - derived from the issue number
+        // alone. But one journal issue is five or six separate class-range PDFs,
+        // and every one of them mapped to that same path. So: fetch class 5 for
+        // issue 2273 and the CLASS 1-9 file lands at journal_2273.pdf. Then ask
+        // for class 29. The lookup correctly resolves the CLASS 26-34 URL, this
+        // method sees a large journal_2273.pdf already on disk, and returns it
+        // WITHOUT ISSUING A REQUEST. The caller searches the class 1-9 file,
+        // finds no class 29 marks, and reports the mark as unpublished. The URL
+        // was never part of the key and was never compared against what was on
+        // disk, so re-running could not fix it and nothing ever expired.
+        //
+        // That is the "I asked for class 29 and got 1-9" report, and it survives
+        // at this layer even once the lookup above is correct.
+        var finalPath = Path.Combine(libraryPath, $"journal_{safeIssue}_{FileTagFor(url)}.pdf");
         var tempPath = finalPath + ".part";
 
         // BUG FIX: this used to return any existing file at this path, however
@@ -456,10 +567,11 @@ public class JournalFetchService
         // under a .pdf name therefore poisoned the cache permanently - every
         // later download short-circuited to the error page, and the search that
         // read it reported "not found" on a name that was in the Journal. A
-        // file only counts as already-downloaded if it is plausibly a Journal.
+        // file only counts as already-downloaded if it is plausibly a Journal
+        // AND actually begins with a PDF header.
         if (File.Exists(finalPath))
         {
-            if (new FileInfo(finalPath).Length >= 20_000) return finalPath;
+            if (new FileInfo(finalPath).Length >= 20_000 && LooksLikePdf(finalPath)) return finalPath;
             try { File.Delete(finalPath); } catch { /* re-download will overwrite */ }
         }
 
@@ -467,6 +579,52 @@ public class JournalFetchService
         // mistaken for progress.
         try { if (File.Exists(tempPath)) File.Delete(tempPath); } catch { }
 
+        // A journal PDF runs to hundreds of megabytes, and the shared client's
+        // 25-second timeout is sized for the ~100 KB listing page. HttpClient's
+        // Timeout covers the WHOLE operation, and with ResponseHeadersRead the
+        // clock keeps running through the body copy - so a 180 MB file on
+        // anything slower than about 60 Mbit could never finish, and surfaced as
+        // "could not be read" rather than "still downloading". The download gets
+        // its own, generous budget.
+        using var budget = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        budget.CancelAfter(DownloadTimeout);
+
+        Exception? lastFailure = null;
+
+        // Three attempts. A dropped connection partway through a large file is
+        // ordinary on this host, and there was previously no retry anywhere in
+        // the service - one blip meant the whole search reported the issue as
+        // unreadable.
+        for (var attempt = 1; attempt <= 3; attempt++)
+        {
+            try
+            {
+                await DownloadOnceAsync(url, tempPath, budget.Token);
+
+                File.Move(tempPath, finalPath, overwrite: true);
+                return finalPath;
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                lastFailure = ex;
+                try { if (File.Exists(tempPath)) File.Delete(tempPath); } catch { }
+
+                if (attempt < 3)
+                    await Task.Delay(TimeSpan.FromSeconds(2 * attempt), budget.Token);
+            }
+        }
+
+        throw new InvalidOperationException(
+            $"The Journal PDF could not be downloaded after 3 attempts: {lastFailure?.Message}", lastFailure);
+    }
+
+    /// <summary>One download attempt, validated before it is allowed to count.</summary>
+    private static async Task DownloadOnceAsync(string url, string tempPath, CancellationToken ct)
+    {
         using var response = await Http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct);
         response.EnsureSuccessStatusCode();
 
@@ -478,24 +636,76 @@ public class JournalFetchService
             throw new InvalidOperationException(
                 "The server returned an HTML page rather than a PDF - the Journal file store may be down.");
 
+        var declaredLength = response.Content.Headers.ContentLength;
+
+        await using (var source = await response.Content.ReadAsStreamAsync(ct))
+        await using (var target = File.Create(tempPath))
+        {
+            await source.CopyToAsync(target, ct);
+        }
+
+        // NOTHING used to be checked after the copy. A connection dropped at
+        // 40 MB of a 150 MB file returned from CopyToAsync perfectly normally,
+        // the .part was renamed to the final name, and the truncated file then
+        // satisfied the 20 KB cache test on every subsequent run - so the search
+        // reported "searched in full" while 110 MB of the issue had never been
+        // read. Three tests now have to pass before a file counts.
+        var written = new FileInfo(tempPath).Length;
+
+        if (declaredLength is { } expected && written != expected)
+            throw new InvalidOperationException(
+                $"The download was cut short - {written:N0} bytes arrived of {expected:N0} expected.");
+
+        if (written < 20_000)
+            throw new InvalidOperationException(
+                $"The downloaded file is only {written:N0} bytes, which is too small to be a Journal PDF. " +
+                "The server most likely returned an error page.");
+
+        if (!LooksLikePdf(tempPath))
+            throw new InvalidOperationException(
+                "The downloaded file is not a PDF - it does not begin with a PDF header. " +
+                "The server most likely returned an error page with a misleading content type.");
+    }
+
+    /// <summary>
+    /// True when the file actually begins with "%PDF-". The size floor alone was
+    /// standing in for this, and a 30 KB ASP.NET error page served as
+    /// application/octet-stream sailed past it.
+    /// </summary>
+    private static bool LooksLikePdf(string path)
+    {
         try
         {
-            await using (var source = await response.Content.ReadAsStreamAsync(ct))
-            await using (var target = File.Create(tempPath))
-            {
-                await source.CopyToAsync(target, ct);
-            }
+            using var stream = File.OpenRead(path);
+            Span<byte> header = stackalloc byte[5];
+            return stream.Read(header) == 5 &&
+                   header[0] == (byte)'%' && header[1] == (byte)'P' &&
+                   header[2] == (byte)'D' && header[3] == (byte)'F' && header[4] == (byte)'-';
         }
         catch
         {
-            // A cancelled or failed copy must not leave a partial .part behind
-            // that the next run has to reason about.
-            try { if (File.Exists(tempPath)) File.Delete(tempPath); } catch { }
-            throw;
+            return false;
         }
+    }
 
-        File.Move(tempPath, finalPath, overwrite: true);
-        return finalPath;
+    /// <summary>
+    /// A short, stable, readable tag identifying WHICH file of an issue this is.
+    /// Prefers the class range named in the URL, so the library reads
+    /// journal_2273_class_26-34.pdf; falls back to a hash of the URL when the
+    /// filename says nothing, which still guarantees two different links never
+    /// collide on one path.
+    /// </summary>
+    private static string FileTagFor(string url)
+    {
+        var name = Regex.Match(url, @"([^/\\?#]+)\.(?:pdf|zip)", RegexOptions.IgnoreCase);
+
+        if (name.Success && TryParseClassRange(name.Groups[1].Value, out var low, out var high))
+            return low == high ? $"class_{low}" : $"class_{low}-{high}";
+
+        var hash = System.Security.Cryptography.SHA256.HashData(
+            System.Text.Encoding.UTF8.GetBytes(url));
+
+        return "u" + Convert.ToHexString(hash)[..8].ToLowerInvariant();
     }
 
     /// <summary>
@@ -533,6 +743,13 @@ public class JournalFetchService
         var embedded = Regex.Match(cleaned,
             @"\b(\d{1,2}[\/\-\.\s][A-Za-z0-9]{1,9}[\/\-\.\s]\d{2,4})\b");
         if (embedded.Success) cleaned = embedded.Groups[1].Value.Trim();
+        else
+        {
+            // ...and the month-first shape, which the pattern above cannot see.
+            var monthFirst = Regex.Match(cleaned,
+                @"\b([A-Za-z]{3,9}\s+\d{1,2},?\s+\d{4})\b");
+            if (monthFirst.Success) cleaned = monthFirst.Groups[1].Value.Trim();
+        }
 
         string[] formats =
         {
@@ -540,6 +757,14 @@ public class JournalFetchService
             "dd.MM.yyyy", "d.M.yyyy", "dd/MM/yy", "d/M/yy",
             "dd MMM yyyy", "d MMM yyyy", "dd-MMM-yyyy", "d-MMM-yyyy",
             "dd MMMM yyyy", "d MMMM yyyy", "yyyy-MM-dd",
+            // Month-first spellings. These matter more than they look: the row
+            // scan below takes the FIRST cell in the row that parses, so if the
+            // publication cell renders as "Aug 17, 2026" and fails while the
+            // availability cell reads "24/08/2026" and succeeds, the issue is
+            // recorded as published on the 24th. A lookup for the 17th then
+            // skips it and silently returns the PREVIOUS week's journal.
+            "MMM d, yyyy", "MMM dd, yyyy", "MMMM d, yyyy", "MMMM dd, yyyy",
+            "MMM d yyyy", "MMMM d yyyy",
         };
 
         foreach (var format in formats)

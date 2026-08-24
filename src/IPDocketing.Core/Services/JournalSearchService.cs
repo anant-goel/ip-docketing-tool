@@ -59,10 +59,26 @@ public class JournalSearchService
         string MatchedText,
         string PageExcerpt,
         string PdfPath,
-        bool FromOcr)
+        bool FromOcr,
+        int Strength = 0)
     {
         /// <summary>What to tell the user: "Journal 2273, page 412".</summary>
         public string Location => $"Journal {IssueNumber}, page {PageNumber}";
+
+        /// <summary>
+        /// How the hit was found, in words. A reviewer deciding which of forty
+        /// pages to open first needs to know that one is the exact name and the
+        /// rest share three words with it.
+        /// </summary>
+        public string MatchQuality => Strength switch
+        {
+            >= 100 => "exact name",
+            >= 95 => "exact name, broken across lines",
+            >= 85 => "every word present",
+            >= 70 => "most of the name present",
+            > 0 => "partial match",
+            _ => "match",
+        };
     }
 
     public sealed record SearchReport(
@@ -95,10 +111,9 @@ public class JournalSearchService
             return new SearchReport(hits, 0, 0,
                 new List<string> { "No PDF reader is available, so nothing could be searched." });
 
-        var needle = NormalizeForSearch(term);
-        var needleTokens = needle.Split(' ', StringSplitOptions.RemoveEmptyEntries)
-            .Where(t => t.Length > 2)
-            .ToList();
+        // The search plan is built per issue, inside the loop - the word weights
+        // depend on which pages are being searched, so they cannot be computed
+        // here.
 
         var issues = _db.JournalIssues
             .OrderByDescending(j => j.PublicationDate)
@@ -127,10 +142,27 @@ public class JournalSearchService
 
             try
             {
-                var pages = await _extractor.ExtractPagesAsync(issue.LocalPdfPath, ct);
+                // Read from the cache where the PDF has not changed since it was
+                // last parsed. Extracting a 1,500-page journal takes tens of
+                // seconds with a text layer and can take hours through OCR, and
+                // it was being redone from scratch on EVERY search - so looking
+                // up three different proprietor names meant three full
+                // re-extractions of every downloaded issue.
+                var pages = await ExtractCachedAsync(issue.LocalPdfPath!, progress, ct);
                 searched++;
 
                 var unreadablePages = 0;
+
+                // Normalise once per page, then weight the search words against
+                // THIS issue before matching anything. Both halves matter: the
+                // page text was previously normalised inside the loop and thrown
+                // away, and the weights cannot be known until the issue has been
+                // read.
+                var normalizedPages = pages.Pages
+                    .Select(p => string.IsNullOrWhiteSpace(p) ? string.Empty : NormalizeForSearch(p))
+                    .ToList();
+
+                var plan = BuildPlan(term, normalizedPages.Where(p => p.Length > 0).ToList());
 
                 for (var i = 0; i < pages.Pages.Count; i++)
                 {
@@ -146,22 +178,18 @@ public class JournalSearchService
                         continue;
                     }
 
-                    var normalized = NormalizeForSearch(raw);
-
-                    var matched = normalized.Contains(needle, StringComparison.Ordinal)
-                        ? term
-                        : MatchBySubset(normalized, needleTokens);
-
-                    if (matched is null) continue;
+                    var match = MatchPage(normalizedPages[i], plan);
+                    if (match is null) continue;
 
                     hits.Add(new PageHit(
                         issue.IssueNumber,
                         issue.PublicationDate,
                         i + 1,
-                        matched,
-                        ExcerptAround(raw, needleTokens),
+                        match.MatchedText,
+                        ExcerptAround(raw, match.Anchor, plan),
                         issue.LocalPdfPath!,
-                        !pages.IsExact));
+                        !pages.IsExact,
+                        match.Strength));
                 }
                 if (unreadablePages > 0)
                 {
@@ -203,11 +231,30 @@ public class JournalSearchService
                 notes.Add($"NOTHING WAS SEARCHED - no issue PDF could be obtained. This is not the same as " +
                           $"\"{term}\" being absent from the Journal.");
             else
-                notes.Add($"Searched {searched} issue(s) in full and found no mention of \"{term}\"." +
+                // NOT "in full". One JournalIssue row holds one PDF, and an
+                // issue is published as several class-range files - so what was
+                // searched is the class range on record for each issue, not the
+                // whole issue. Saying "in full" invites a clearance conclusion
+                // the search cannot support.
+                notes.Add($"Searched the downloaded PDF of {searched} issue(s) and found no mention of \"{term}\". " +
+                          "Note that each issue is published as several class-range files and only the file " +
+                          "on record for each issue was read - a mark published in another class range of the " +
+                          "same issue would not appear here." +
                           (skipped > 0 ? $" {skipped} further issue(s) could not be read - see above." : ""));
         }
 
-        return new SearchReport(hits, searched, skipped, notes);
+        // STRONGEST FIRST. Hits used to come back in the order the pages were
+        // walked, so an exact-name match on page 900 sat below forty
+        // partial matches from page 12 onwards. A reviewer works down this list
+        // and stops when they find what they came for; the order is most of the
+        // value.
+        var ranked = hits
+            .OrderByDescending(h => h.Strength)
+            .ThenByDescending(h => h.PublicationDate)
+            .ThenBy(h => h.PageNumber)
+            .ToList();
+
+        return new SearchReport(ranked, searched, skipped, notes);
     }
 
     /// <summary>
@@ -251,23 +298,212 @@ public class JournalSearchService
     }
 
     /// <summary>
-    /// A page counts as a hit when most of the distinctive words appear on it,
-    /// not only when the exact phrase does. Journal typesetting breaks names
-    /// across lines and abbreviates them ("COMPANY" to "CO."), so exact-phrase
-    /// matching alone would miss most genuine appearances.
+    /// Extracts a PDF's pages, reusing a cached copy where the file has not
+    /// changed since the last extraction.
+    ///
+    /// The cache is a sidecar file next to the PDF whose first line records the
+    /// source file's size and last-write time. It is used only when BOTH still
+    /// match, so a re-downloaded or repaired PDF is re-read rather than answered
+    /// from a stale cache - which is the failure mode that would make a cache
+    /// worse than no cache.
+    ///
+    /// On disk rather than in the database, deliberately: the page text of a
+    /// dozen issues runs to hundreds of megabytes and does not belong in a
+    /// SQLite file that gets backed up. It also means no schema change, so
+    /// nothing here puts the existing database at risk.
     /// </summary>
-    private static string? MatchBySubset(string pageText, List<string> tokens)
+    private async Task<PagedExtractionResult> ExtractCachedAsync(
+        string pdfPath, Action<string>? progress, CancellationToken ct)
     {
-        if (tokens.Count == 0) return null;
+        var cachePath = pdfPath + ".pages.txt";
 
-        var present = tokens.Where(t => pageText.Contains(t, StringComparison.Ordinal)).ToList();
+        var info = new FileInfo(pdfPath);
+        var stamp = $"IPD-PAGECACHE v1 {info.Length} {info.LastWriteTimeUtc.Ticks}";
 
-        // Require the clear majority, and at least two words. One shared word
-        // would fire on every page containing "TRADE".
-        var needed = Math.Max(2, (int)Math.Ceiling(tokens.Count * 0.75));
-        if (tokens.Count == 1) needed = 1;
+        if (File.Exists(cachePath))
+        {
+            try
+            {
+                var cached = await File.ReadAllTextAsync(cachePath, ct);
+                var split = cached.IndexOf('\n');
 
-        return present.Count >= needed ? string.Join(' ', present) : null;
+                if (split > 0 && cached[..split].TrimEnd('\r') == stamp)
+                {
+                    var body = cached[(split + 1)..];
+
+                    // A form feed separates the pages: it is the one character
+                    // that will not occur in extracted page text, so a page full
+                    // of punctuation still round-trips intact.
+                    var parts = body.Split('\f');
+                    var method = parts.Length > 0 ? parts[0] : ExtractionResult.TextLayer;
+
+                    return new PagedExtractionResult(parts.Skip(1).ToList(), method);
+                }
+            }
+            catch
+            {
+                // An unreadable cache is not an error - it just means the PDF is
+                // read the slow way, which is what happened every time before.
+            }
+        }
+
+        progress?.Invoke($"Reading {Path.GetFileName(pdfPath)} (first time - this is the slow part)...");
+
+        var pages = await _extractor!.ExtractPagesAsync(pdfPath, ct);
+
+        // Never cache a failed or empty read. That would turn one bad extraction
+        // into a permanent "this issue contains nothing".
+        if (pages.Error is null && pages.Pages.Any(p => !string.IsNullOrWhiteSpace(p)))
+        {
+            try
+            {
+                await File.WriteAllTextAsync(
+                    cachePath,
+                    stamp + "\n" + pages.Method + "\f" + string.Join('\f', pages.Pages),
+                    ct);
+            }
+            catch
+            {
+                // A read-only library folder must not fail the search.
+            }
+        }
+
+        return pages;
+    }
+
+    /// <summary>
+    /// How strong a page match is, and what matched.
+    ///
+    /// <paramref name="Anchor"/> is the token the excerpt should be centred on -
+    /// the rarest one that was actually found, which is the part of the page a
+    /// reader wants to see.
+    /// </summary>
+    private sealed record PageMatch(string MatchedText, int Strength, string? Anchor);
+
+    /// <summary>
+    /// A search plan for one issue, with each search word weighted by how rare
+    /// it is IN THAT ISSUE.
+    ///
+    /// WHY WEIGHTS, AND WHY MEASURED RATHER THAN LISTED
+    ///
+    /// The old rule was "three of the four words appear somewhere on the page,
+    /// as substrings". For "KARTIK TRADE MARKS COMPANY" that is a disaster:
+    /// every page of the Trade Marks Journal carries the running head TRADE
+    /// MARKS JOURNAL, and most carry a proprietor line containing COMPANY. Three
+    /// of four words are therefore present on essentially every page of a
+    /// 1,500-page issue with KARTIK appearing nowhere - so the search returned
+    /// about 1,500 hits, each labelled "TRADE MARKS COMPANY", and the one real
+    /// hit was indistinguishable from the noise. Substring matching made it
+    /// worse: TRADE also matched inside TRADEMARKS, TRADERS and TRADED.
+    ///
+    /// A hard-coded stop-word list would help, but it cannot know that DELHI is
+    /// boilerplate in one issue and distinctive in another. Document frequency
+    /// can: a word appearing on most pages of this issue tells you nothing about
+    /// which page you want, whatever that word is. So the weights are measured
+    /// from the issue being searched, and the rule becomes "the rarest word you
+    /// searched for must actually be there".
+    /// </summary>
+    private sealed record SearchPlan(
+        string Needle,
+        string NeedleCompact,
+        List<string> Tokens,
+        Dictionary<string, double> Weight,
+        string? Rarest)
+    {
+        public double TotalWeight => Tokens.Sum(t => Weight[t]);
+    }
+
+    private static SearchPlan BuildPlan(string term, List<string> normalizedPages)
+    {
+        var needle = NormalizeForSearch(term);
+
+        // Length >= 2, not > 2. The old filter dropped every short token, so a
+        // search for "3M INDIA" collapsed to [INDIA] - one token, one required
+        // match - and hit every page mentioning India.
+        var tokens = needle.Split(' ', StringSplitOptions.RemoveEmptyEntries)
+            .Where(t => t.Length >= 2)
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+
+        var weight = new Dictionary<string, double>(StringComparer.Ordinal);
+        var pageCount = Math.Max(1, normalizedPages.Count);
+
+        // Word SETS, so a token is counted once per page and matching is on
+        // whole words. This is also what stops TRADE matching inside TRADERS.
+        var pageWords = normalizedPages
+            .Select(p => p.Split(' ', StringSplitOptions.RemoveEmptyEntries)
+                          .ToHashSet(StringComparer.Ordinal))
+            .ToList();
+
+        foreach (var token in tokens)
+        {
+            var df = pageWords.Count(w => w.Contains(token));
+
+            // 1.0 for a word on no other page, falling to 0 for a word on every
+            // page. Squared so that a word on a third of the pages is already
+            // worth much less than one on a twentieth.
+            var rarity = 1.0 - (double)df / pageCount;
+            weight[token] = Math.Max(0.02, rarity * rarity);
+        }
+
+        var rarest = tokens.OrderByDescending(t => weight[t]).FirstOrDefault();
+
+        return new SearchPlan(needle, Compact(needle), tokens, weight, rarest);
+    }
+
+    private static string Compact(string value) => value.Replace(" ", "");
+
+    /// <summary>
+    /// Scores one page against the plan. Returns null when the page is not a
+    /// genuine hit.
+    /// </summary>
+    private static PageMatch? MatchPage(string normalizedPage, SearchPlan plan)
+    {
+        if (plan.Tokens.Count == 0) return null;
+
+        // 1. The exact phrase, ON WORD BOUNDARIES. Padding both sides with a
+        //    space is what makes this a word match rather than a substring one.
+        //    Without it, a search for "TRADE" matched inside TRADERS, TRADED and
+        //    TRADEMARKS - on every page of the issue, at full strength.
+        if ((" " + normalizedPage + " ").Contains(" " + plan.Needle + " ", StringComparison.Ordinal))
+            return new PageMatch(plan.Needle, 100, plan.Rarest);
+
+        // 2. The phrase with all spacing removed. Journal typesetting breaks
+        //    names across lines and columns, so "UNI-LEVER" split over a line
+        //    end normalises to "UNI LEVER" and the exact test above misses it.
+        //    Compacting both sides catches that without loosening word matching
+        //    anywhere else.
+        if (plan.NeedleCompact.Length >= 8 &&
+            Compact(normalizedPage).Contains(plan.NeedleCompact, StringComparison.Ordinal))
+            return new PageMatch(plan.Needle, 95, plan.Rarest);
+
+        var words = normalizedPage.Split(' ', StringSplitOptions.RemoveEmptyEntries)
+            .ToHashSet(StringComparer.Ordinal);
+
+        var present = plan.Tokens.Where(words.Contains).ToList();
+        if (present.Count == 0) return null;
+
+        // 3. THE RAREST WORD MUST BE PRESENT. This is the whole fix. Whatever
+        //    else a page contains, if the one word that actually distinguishes
+        //    this search is not on it, the page is not a hit.
+        if (plan.Rarest is not null && !words.Contains(plan.Rarest)) return null;
+
+        // A single-word search is answered by rule 3 alone.
+        if (plan.Tokens.Count == 1)
+            return new PageMatch(present[0], 90, plan.Rarest);
+
+        var covered = present.Sum(t => plan.Weight[t]);
+        var coverage = plan.TotalWeight <= 0 ? 0 : covered / plan.TotalWeight;
+
+        // 4. Weighted coverage. Missing COMPANY off a four-word name barely
+        //    moves this; missing KARTIK makes it unreachable - and rule 3 has
+        //    already rejected that page anyway.
+        if (present.Count == plan.Tokens.Count)
+            return new PageMatch(string.Join(' ', present), 85, plan.Rarest);
+
+        if (coverage < 0.6) return null;
+
+        return new PageMatch(string.Join(' ', present), (int)Math.Round(50 + 30 * coverage), plan.Rarest);
     }
 
     /// <summary>Collapses whitespace, uppercases, strips punctuation that Journal typesetting varies.</summary>
@@ -286,17 +522,29 @@ public class JournalSearchService
     /// read in place rather than only located. Falls back to the top of the page
     /// where the anchor can't be found in the raw text (OCR line breaks).
     /// </summary>
-    private static string ExcerptAround(string pageText, List<string> tokens)
+    private static string ExcerptAround(string pageText, string? anchor, SearchPlan plan)
     {
-        var anchor = tokens.OrderByDescending(t => t.Length).FirstOrDefault();
-        var index = anchor is null
-            ? -1
-            : pageText.IndexOf(anchor, StringComparison.OrdinalIgnoreCase);
+        // Anchor on the word that made this a hit, in rarity order.
+        //
+        // It used to anchor on the LONGEST token of the search term, whether or
+        // not that token was one of the ones that matched. On a page matched
+        // through TRADE / MARKS / COMPANY with KARTIK absent, the longest token
+        // is COMPANY, whose first appearance is very likely an unrelated
+        // proprietor hundreds of lines above - so the excerpt shown as evidence
+        // for the hit was a different entry entirely.
+        var candidates = new List<string>();
+        if (!string.IsNullOrEmpty(anchor)) candidates.Add(anchor);
+        candidates.AddRange(plan.Tokens.OrderByDescending(t => plan.Weight[t]));
 
-        if (index < 0) return Trim(pageText, 0, 1200);
+        foreach (var candidate in candidates)
+        {
+            var index = pageText.IndexOf(candidate, StringComparison.OrdinalIgnoreCase);
+            if (index < 0) continue;
 
-        var start = Math.Max(0, index - 500);
-        return Trim(pageText, start, 1400);
+            return Trim(pageText, Math.Max(0, index - 500), 1400);
+        }
+
+        return Trim(pageText, 0, 1200);
     }
 
     private static string Trim(string text, int start, int length)
@@ -315,16 +563,33 @@ public class JournalSearchService
     {
         Directory.CreateDirectory(outputDirectory);
 
-        var fileName = $"journal_{hit.IssueNumber}_p{hit.PageNumber}.txt";
+        // The issue number is free text - JournalService.Add accepts whatever it
+        // is given, and "2273/2026" is a plausible manual entry. Unsanitised,
+        // Path.Combine turned that into a nested directory that does not exist
+        // and threw DirectoryNotFoundException straight out of a UI handler.
+        // DownloadPdfAsync already guards its filenames this way; this did not.
+        var safeIssue = string.Concat((hit.IssueNumber ?? "unknown")
+            .Select(c => Path.GetInvalidFileNameChars().Contains(c) ? '_' : c));
+
+        var fileName = $"journal_{safeIssue}_p{hit.PageNumber}_extract.txt";
         var path = Path.Combine(outputDirectory, fileName);
 
+        // The header used to read "Page {n}" above a body that is an EXCERPT -
+        // about 1,400 characters around the match, often starting mid-sentence
+        // with an ellipsis. Someone filing this with the docket as their record
+        // of what was published would have been keeping a document that silently
+        // omits the rest of the page, plausibly including the application number
+        // and the other marks in the same entry. It now says what it is.
         var header =
             $"Journal {hit.IssueNumber} — published {hit.PublicationDate:dd MMM yyyy}\r\n" +
-            $"Page {hit.PageNumber}\r\n" +
+            $"Page {hit.PageNumber} — EXTRACT ONLY, not the full page\r\n" +
+            $"Matched: {hit.MatchedText}  ({hit.MatchQuality})\r\n" +
             $"Source PDF: {hit.PdfPath}\r\n" +
             (hit.FromOcr
                 ? "Text obtained by OCR — verify against the PDF before relying on it.\r\n"
                 : "Text taken from the PDF text layer (exact).\r\n") +
+            "This file holds the text surrounding the match, not the whole page. " +
+            "Open the source PDF at the page above for the complete entry.\r\n" +
             new string('-', 70) + "\r\n\r\n";
 
         File.WriteAllText(path, header + hit.PageExcerpt);

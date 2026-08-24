@@ -39,7 +39,16 @@ public class JournalService
                 existing.DownloadedUtc = issue.DownloadedUtc;
             }
             if (!string.IsNullOrWhiteSpace(issue.Notes)) existing.Notes = issue.Notes;
-            if (issue.PublicationDate != default) existing.PublicationDate = issue.PublicationDate;
+
+            // `!= default` is not the guard this needs. default(DateTime) is
+            // 0001-01-01, but the sentinel this application actually produces is
+            // 1601-01-01 - the WinRT epoch an unset date picker returns - and
+            // that sailed straight through. One browse-and-download pass with no
+            // date chosen then overwrote a correctly parsed publication date,
+            // permanently: the row sorted to the bottom of every list and
+            // dropped out of the search window, so the newest issue became the
+            // one that was never searched.
+            if (IsRealDate(issue.PublicationDate)) existing.PublicationDate = issue.PublicationDate;
 
             _db.SaveChanges();
             return existing;
@@ -65,10 +74,44 @@ public class JournalService
         var removed = 0;
         foreach (var group in groups)
         {
+            // KEEP THE ROW THAT CAN STILL DO SOMETHING.
+            //
+            // The old ranking asked only whether LocalPdfPath was non-empty -
+            // not whether the file still existed, and it ignored Url entirely.
+            // So a row whose PDF the user had since deleted beat a row holding
+            // the only download link, the link row was deleted, and the issue
+            // became permanently un-fetchable: the search then reported "no PDF
+            // link on record" about an issue whose link this method had just
+            // thrown away.
+            //
+            // Order now: a PDF that is actually on disk, then a usable URL, then
+            // a recorded path, then the newest row.
             var keep = group
-                .OrderByDescending(j => !string.IsNullOrWhiteSpace(j.LocalPdfPath))
+                .OrderByDescending(j => !string.IsNullOrWhiteSpace(j.LocalPdfPath) && File.Exists(j.LocalPdfPath))
+                .ThenByDescending(j => !string.IsNullOrWhiteSpace(j.Url))
+                .ThenByDescending(j => !string.IsNullOrWhiteSpace(j.LocalPdfPath))
                 .ThenByDescending(j => j.Id)
                 .First();
+
+            // Anything the survivor is missing and a doomed row still has is
+            // carried across before that row is deleted - otherwise merging two
+            // half-complete rows loses whichever half the loser held.
+            foreach (var other in group.Where(j => j.Id != keep.Id))
+            {
+                if (string.IsNullOrWhiteSpace(keep.Url) && !string.IsNullOrWhiteSpace(other.Url))
+                    keep.Url = other.Url;
+
+                if ((string.IsNullOrWhiteSpace(keep.LocalPdfPath) || !File.Exists(keep.LocalPdfPath)) &&
+                    !string.IsNullOrWhiteSpace(other.LocalPdfPath) && File.Exists(other.LocalPdfPath))
+                {
+                    keep.LocalPdfPath = other.LocalPdfPath;
+                    keep.PdfSizeBytes = other.PdfSizeBytes;
+                    keep.DownloadedUtc = other.DownloadedUtc;
+                }
+
+                if (!IsRealDate(keep.PublicationDate) && IsRealDate(other.PublicationDate))
+                    keep.PublicationDate = other.PublicationDate;
+            }
 
             foreach (var duplicate in group.Where(j => j.Id != keep.Id))
             {
@@ -80,6 +123,13 @@ public class JournalService
         if (removed > 0) _db.SaveChanges();
         return removed;
     }
+
+    /// <summary>
+    /// A publication date that came from a person or a page, rather than from an
+    /// unset control. Covers both sentinels: DateTime.MinValue (0001) and the
+    /// WinRT epoch (1601) that a blank WinUI date picker hands back.
+    /// </summary>
+    private static bool IsRealDate(DateTime value) => value.Year >= 1900;
 
     public void MarkReviewed(int id, bool reviewed = true)
     {

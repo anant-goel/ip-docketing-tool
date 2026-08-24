@@ -8,6 +8,13 @@ namespace IPDocketing.WinUI;
 public partial class App : Application
 {
     public static AppDbContext Database { get; private set; } = null!;
+
+    /// <summary>
+    /// What the schema check did on this start, in one sentence. Surfaced in
+    /// Settings so an in-place upgrade is visible rather than silent - the user
+    /// should be able to see that their data was carried forward.
+    /// </summary>
+    public static string DatabaseMigrationSummary { get; private set; } = "";
     public static AuditService Audit { get; private set; } = null!;
     public static MatterService Matters { get; private set; } = null!;
     public static DeadlineService Deadlines { get; private set; } = null!;
@@ -277,18 +284,20 @@ public partial class App : Application
             catch { /* start fresh */ }
         }
 
-        // EnsureCreated() (used below, and in SeedData) only builds the schema
-        // the FIRST time a database file doesn't exist - it never alters an
-        // already-existing file's schema. Every model change since this file
-        // was first created (new columns, new tables) would otherwise be
-        // silently missing, causing "no such column" crashes like the
-        // AssignedToId one. Bump SchemaVersion whenever a model changes;
-        // a mismatch means the on-disk file predates that change, so it's
-        // deleted and rebuilt fresh rather than crashing on first query.
-        // This does mean local data doesn't survive a schema change while
-        // the app has no formal EF migrations - acceptable for now, but
-        // worth switching to real migrations before this holds data anyone
-        // depends on keeping.
+        // SCHEMA CHANGES NO LONGER DESTROY THE DATABASE.
+        //
+        // What used to be here compared a hand-maintained `schemaVersion`
+        // constant against a number in schema-version.txt and, where they
+        // differed, DELETED the database file so EnsureCreated() could rebuild
+        // an empty one. Every model change - one added column - therefore cost
+        // the user every matter, deadline, document link, watch alert and
+        // dismissal entered since the previous change. A pre-change encrypted
+        // snapshot softened it, but restoring one means losing everything since,
+        // and it is not something anyone should have to do on a Monday morning.
+        //
+        // DatabaseMigrator now brings the file forward in place with EF Core
+        // migrations, and adopts databases built by the old EnsureCreated path
+        // on first run. It never deletes. See DatabaseMigrator for the detail.
         splash.SetStatus("Preparing database...");
 
         // PHASE 31 - the blank-window fix, part two.
@@ -303,51 +312,21 @@ public partial class App : Application
         // is safe. Nothing else touches these statics until this await returns.
         await System.Threading.Tasks.Task.Run(() =>
         {
-            const int schemaVersion = 6;
-            var schemaVersionPath = Path.Combine(AppDataDirectory, "schema-version.txt");
-            var previousVersion = File.Exists(schemaVersionPath)
-                ? int.TryParse(File.ReadAllText(schemaVersionPath).Trim(), out var v) ? v : 0
-                : 0;
-
-            if (previousVersion != schemaVersion && File.Exists(DatabasePath))
-            {
-                // Phase 30: take a recoverable snapshot BEFORE throwing the old
-                // database away. The previous version deleted it outright, so every
-                // schema bump silently destroyed whatever had been entered since
-                // the last one - fine while this was a demo, not fine now that it
-                // holds real matters. The snapshot is a normal encrypted backup
-                // file, restorable from Settings > Backups.
-                try
-                {
-                    var preChangeDir = Path.Combine(AppDataDirectory, "Backups");
-                    Directory.CreateDirectory(preChangeDir);
-                    var stamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
-                    EncryptionService.EncryptFileTo(
-                        DatabasePath,
-                        Path.Combine(preChangeDir, $"presnapshot_schema{previousVersion}to{schemaVersion}_{stamp}.db.enc"));
-                }
-                catch
-                {
-                    // A failed snapshot must not block startup, but it is worth
-                    // knowing about - it lands in crash-log.txt via the caller.
-                }
-
-                try
-                {
-                    File.Delete(DatabasePath);
-                    if (File.Exists(sealedDb)) File.Delete(sealedDb);
-                }
-                catch
-                {
-                    // If we can't delete it, EnsureCreated below will still no-op
-                    // against the stale file and the same crash will resurface -
-                    // but we tried, and this shouldn't be fatal on its own.
-                }
-            }
-            File.WriteAllText(schemaVersionPath, schemaVersion.ToString());
-
             splash.SetStatus("Opening database...");
             Database = new AppDbContext(DatabasePath);
+
+            var migration = IPDocketing.Core.Data.DatabaseMigrator.Prepare(
+                Database, DatabasePath, splash.SetStatus);
+
+            DatabaseMigrationSummary = migration.Summary;
+
+            if (!migration.Succeeded)
+            {
+                // Loud, but not fatal: the app can still run against the old
+                // schema for read-only work, and the user needs to be told
+                // rather than have the failure swallowed at startup.
+                System.Diagnostics.Debug.WriteLine($"Database migration failed: {migration.Failure}");
+            }
 
             splash.SetStatus("Loading country rules...");
             SeedData.EnsureSeeded(Database);

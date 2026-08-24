@@ -15,6 +15,13 @@ public interface IAiProvider
     bool IsConfigured { get; }
 
     Task<AiResponse> AskAsync(AiRequest request, CancellationToken ct = default);
+
+    /// <summary>
+    /// Asks the provider which models this key may use. A cheap GET that costs
+    /// nothing and, crucially, exercises authentication WITHOUT exercising the
+    /// model name - which is the only way to tell a dead key from a dead model.
+    /// </summary>
+    Task<AiModelList> ListModelsAsync(CancellationToken ct = default);
 }
 
 /// <summary>
@@ -50,8 +57,58 @@ public abstract class AiProviderBase : IAiProvider
     protected abstract string? ReadAnswer(JsonElement root);
 
     /// <summary>
+    /// Why a 200 response carried no text. Overridable because "it worked but
+    /// said nothing" is the least self-explanatory failure there is, and every
+    /// provider puts the reason somewhere different.
+    /// </summary>
+    protected virtual string DescribeEmptyAnswer(JsonElement root) => "The response contained no text.";
+
+    /// <summary>The provider's "what models can this key use" request.</summary>
+    protected abstract HttpRequestMessage BuildListModelsRequest(string apiKey);
+
+    /// <summary>Reads that provider's catalogue response shape.</summary>
+    protected abstract IReadOnlyList<AiModelInfo> ReadModels(JsonElement root);
+
+    public async Task<AiModelList> ListModelsAsync(CancellationToken ct = default)
+    {
+        var apiKey = Credentials.GetKey(Kind);
+        if (apiKey is null)
+            return AiModelList.Fail(Kind, "No API key is configured for this provider.");
+
+        try
+        {
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            timeout.CancelAfter(TimeSpan.FromSeconds(Math.Max(5, Settings.TimeoutSeconds)));
+
+            using var httpRequest = BuildListModelsRequest(apiKey);
+            using var response = await Http.SendAsync(httpRequest, timeout.Token);
+            var body = await response.Content.ReadAsStringAsync(timeout.Token);
+
+            if (!response.IsSuccessStatusCode)
+                return AiModelList.Fail(Kind, DescribeFailure(response.StatusCode, body));
+
+            using var parsed = JsonDocument.Parse(body);
+            return AiModelList.Ok(Kind, ReadModels(parsed.RootElement));
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            return AiModelList.Fail(Kind, $"Timed out after {Settings.TimeoutSeconds}s.");
+        }
+        catch (Exception ex)
+        {
+            return AiModelList.Fail(Kind, ex.Message);
+        }
+    }
+
+    /// <summary>
     /// A single alternative request to try when the first one failed, or null to
-    /// accept the failure. Exists for one real case; see GeminiProvider.
+    /// accept the failure.
+    ///
+    /// No provider currently overrides this. Gemini did, retrying an auth
+    /// failure as a bearer token, and that turned out to make the error message
+    /// worse rather than the request work - see the note in GeminiProvider. The
+    /// hook is kept because the shape is right for a genuine one-shot recovery;
+    /// anything added here must be narrow and must not mask the real error.
     /// </summary>
     protected virtual HttpRequestMessage? BuildRecoveryRequest(
         string apiKey, AiRequest request, System.Net.HttpStatusCode status, string body) => null;
@@ -103,7 +160,7 @@ public abstract class AiProviderBase : IAiProvider
             var answer = ReadAnswer(parsed.RootElement);
 
             return string.IsNullOrWhiteSpace(answer)
-                ? AiResponse.Fail(Kind, "The response contained no text.", clock.Elapsed)
+                ? AiResponse.Fail(Kind, DescribeEmptyAnswer(parsed.RootElement), clock.Elapsed)
                 : AiResponse.Ok(Kind, answer!.Trim(), clock.Elapsed);
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
@@ -131,14 +188,16 @@ public abstract class AiProviderBase : IAiProvider
         var hint = status switch
         {
             System.Net.HttpStatusCode.Unauthorized => "The API key was rejected. Check it in Settings. " +
-                                                      "For Gemini: keys beginning \"AQ.\" are known to be " +
-                                                      "refused by generateContent on some accounts, with no " +
-                                                      "fix published - an AIzaSy key works if you can still " +
-                                                      "get one issued.",
+                                                      "For Gemini: Google now issues \"auth keys\" beginning " +
+                                                      "\"AQ.\", and some accounts get 401 " +
+                                                      "ACCESS_TOKEN_TYPE_UNSUPPORTED from every request made " +
+                                                      "with one, with no published fix. Old AIzaSy keys still " +
+                                                      "work but are themselves rejected from September 2026. " +
+                                                      "Use Test to see whether the key or the model is at fault.",
             System.Net.HttpStatusCode.Forbidden => "The key is valid but not permitted to use this model.",
             System.Net.HttpStatusCode.NotFound => "The model name was not recognised - it has probably been " +
-                                                  "retired. Change the model in Settings (an alias such as " +
-                                                  "gemini-flash-latest keeps working across retirements).",
+                                                  "retired. Use Test in Settings to list the models this key " +
+                                                  "can actually reach, and pick one of those.",
             System.Net.HttpStatusCode.TooManyRequests => "Rate limited. Try again shortly.",
             _ => "The provider returned an error.",
         };
@@ -165,6 +224,23 @@ public abstract class AiProviderBase : IAiProvider
           "\n\nReply with a single valid JSON value and nothing else: no explanation, " +
           "no preamble, no markdown code fence."
         : request.System;
+
+    /// <summary>
+    /// The caller's raw JSON Schema as a JsonElement, ready to be nested inside
+    /// a payload. Deserialize rather than JsonDocument.Parse on purpose: the
+    /// element outlives this call, and a JsonElement whose JsonDocument has been
+    /// disposed throws when the payload is later serialised.
+    ///
+    /// Returns null if the schema is absent or is not valid JSON - a malformed
+    /// schema degrades the request to plain JSON mode rather than failing it.
+    /// </summary>
+    protected static JsonElement? SchemaOf(AiRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request.JsonSchema)) return null;
+
+        try { return JsonSerializer.Deserialize<JsonElement>(request.JsonSchema!); }
+        catch (JsonException) { return null; }
+    }
 }
 
 /// <summary>Anthropic Messages API.</summary>
@@ -177,21 +253,59 @@ public sealed class AnthropicProvider : AiProviderBase
 
     protected override HttpRequestMessage BuildRequest(string apiKey, AiRequest request)
     {
+        // NO temperature. This request used to send one, and on Opus 4.7 and
+        // every later model - including the claude-sonnet-5 that is now the
+        // default - a non-default temperature is a 400 on EVERY request,
+        // thinking or not. The field was quietly turning the whole provider off.
+        // Determinism comes from the instruction instead.
+        var payload = new Dictionary<string, object>
+        {
+            ["model"] = Model,
+            ["max_tokens"] = request.MaxTokens,
+            ["system"] = SystemFor(request),
+            ["messages"] = new[] { new { role = "user", content = request.User } },
+        };
+
+        // Anthropic's structured outputs, GA and no beta header needed. Note the
+        // field is output_config.format - NOT output_format, which was the beta
+        // spelling and is only accepted "for a transition period", and not
+        // response_format, which is OpenAI's.
+        if (SchemaOf(request) is { } schema)
+            payload["output_config"] = new
+            {
+                format = new { type = "json_schema", schema },
+            };
+
         var message = new HttpRequestMessage(HttpMethod.Post, "https://api.anthropic.com/v1/messages")
         {
-            Content = Json(new
-            {
-                model = Model,
-                max_tokens = request.MaxTokens,
-                temperature = request.Temperature,
-                system = SystemFor(request),
-                messages = new[] { new { role = "user", content = request.User } },
-            }),
+            Content = Json(payload),
         };
 
         message.Headers.Add("x-api-key", apiKey);
         message.Headers.Add("anthropic-version", "2023-06-01");
         return message;
+    }
+
+    protected override HttpRequestMessage BuildListModelsRequest(string apiKey)
+    {
+        var message = new HttpRequestMessage(HttpMethod.Get, "https://api.anthropic.com/v1/models?limit=100");
+        message.Headers.Add("x-api-key", apiKey);
+        message.Headers.Add("anthropic-version", "2023-06-01");
+        return message;
+    }
+
+    protected override IReadOnlyList<AiModelInfo> ReadModels(JsonElement root)
+    {
+        if (!root.TryGetProperty("data", out var data) || data.ValueKind != JsonValueKind.Array)
+            return Array.Empty<AiModelInfo>();
+
+        return data.EnumerateArray()
+            .Where(m => m.TryGetProperty("id", out _))
+            .Select(m => new AiModelInfo(
+                m.GetProperty("id").GetString() ?? "",
+                m.TryGetProperty("display_name", out var d) ? d.GetString() : null))
+            .Where(m => m.Id.Length > 0)
+            .ToList();
     }
 
     protected override string? ReadAnswer(JsonElement root)
@@ -212,11 +326,23 @@ public sealed class OpenAiProvider : AiProviderBase
 
     protected override HttpRequestMessage BuildRequest(string apiKey, AiRequest request)
     {
+        // No temperature, for the same reason as Anthropic: OpenAI's reasoning
+        // models - which is what the whole GPT-5 line is - reject it outright
+        // with "Only the default (1) value is supported".
+        //
+        // max_completion_tokens, never max_tokens: max_tokens is deprecated on
+        // chat/completions and is a hard 400 on these models.
+        //
+        // The floor matters. Reasoning tokens are counted against this ceiling
+        // before a single visible character is produced, so the 1024 a caller
+        // asks for can be spent entirely on thinking and return an EMPTY answer
+        // that looks like a broken provider. A ceiling is not a charge - only
+        // tokens actually generated are billed - so it costs nothing to leave
+        // room.
         var payload = new Dictionary<string, object>
         {
             ["model"] = Model,
-            ["temperature"] = request.Temperature,
-            ["max_completion_tokens"] = request.MaxTokens,
+            ["max_completion_tokens"] = Math.Max(request.MaxTokens, 25_000),
             ["messages"] = new[]
             {
                 new { role = "system", content = SystemFor(request) },
@@ -227,8 +353,29 @@ public sealed class OpenAiProvider : AiProviderBase
         // Only sent when asked for. Turning JSON mode on unconditionally would
         // break every ordinary question, since the model would then be obliged
         // to answer "what class is this" as a JSON document.
-        if (request.JsonOnly)
+        if (SchemaOf(request) is { } schema)
+        {
+            // Structured Outputs. strict:true makes the schema binding rather
+            // than advisory - the decoder cannot emit a non-conforming token.
+            // The name is constrained to letters, digits, underscore and dash.
+            payload["response_format"] = new
+            {
+                type = "json_schema",
+                json_schema = new
+                {
+                    name = SafeSchemaName(request.JsonSchemaName),
+                    strict = true,
+                    schema,
+                },
+            };
+        }
+        else if (request.JsonOnly)
+        {
+            // The older, schema-less mode. Still supported, and still requires
+            // the word "json" to appear in the messages - which SystemFor has
+            // just guaranteed by appending its JSON-only sentence.
             payload["response_format"] = new { type = "json_object" };
+        }
 
         var message = new HttpRequestMessage(HttpMethod.Post, "https://api.openai.com/v1/chat/completions")
         {
@@ -237,6 +384,47 @@ public sealed class OpenAiProvider : AiProviderBase
 
         message.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
         return message;
+    }
+
+    /// <summary>OpenAI rejects a schema name outside [A-Za-z0-9_-]{1,64}.</summary>
+    private static string SafeSchemaName(string name)
+    {
+        var cleaned = new string((name ?? "").Where(c => char.IsLetterOrDigit(c) || c is '_' or '-').ToArray());
+        if (cleaned.Length == 0) cleaned = "extraction";
+        return cleaned.Length > 64 ? cleaned[..64] : cleaned;
+    }
+
+    protected override HttpRequestMessage BuildListModelsRequest(string apiKey)
+    {
+        var message = new HttpRequestMessage(HttpMethod.Get, "https://api.openai.com/v1/models");
+        message.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
+        return message;
+    }
+
+    protected override IReadOnlyList<AiModelInfo> ReadModels(JsonElement root)
+    {
+        if (!root.TryGetProperty("data", out var data) || data.ValueKind != JsonValueKind.Array)
+            return Array.Empty<AiModelInfo>();
+
+        return data.EnumerateArray()
+            .Where(m => m.TryGetProperty("id", out _))
+            .Select(m =>
+            {
+                var id = m.GetProperty("id").GetString() ?? "";
+
+                // shutdown_date is the single most useful field OpenAI exposes:
+                // it says a model is scheduled to stop working before the day it
+                // starts returning errors.
+                var shutdown = m.TryGetProperty("shutdown_date", out var s) && s.ValueKind == JsonValueKind.String
+                    ? s.GetString()
+                    : null;
+
+                return new AiModelInfo(
+                    id, null,
+                    shutdown is null ? null : $"shuts down {shutdown}");
+            })
+            .Where(m => m.Id.Length > 0)
+            .ToList();
     }
 
     protected override string? ReadAnswer(JsonElement root)
@@ -263,17 +451,41 @@ public sealed class GeminiProvider : AiProviderBase
         // in the URL ends up in proxy logs and crash reports; a header does not.
         var url = $"https://generativelanguage.googleapis.com/v1beta/models/{Model}:generateContent";
 
+        // Gemini still honours temperature, unlike the other two, so a document
+        // extraction really can be pinned to 0 here.
+        //
+        // The output floor is for the same reason as OpenAI's: Gemini 3 models
+        // think before they answer and those tokens are drawn from
+        // maxOutputTokens. A tight budget comes back as a 200 with an empty
+        // candidate and finishReason MAX_TOKENS - which reads as "the AI
+        // returned nothing" when it actually means "the AI was not given room to
+        // finish".
         var generationConfig = new Dictionary<string, object>
         {
             ["temperature"] = request.Temperature,
-            ["maxOutputTokens"] = request.MaxTokens,
+            ["maxOutputTokens"] = Math.Max(request.MaxTokens, 8_192),
         };
 
         // Gemini's own structured-output switch. Same field the google-genai
         // Python SDK sets as response_mime_type - it is a plain field on
-        // generationConfig over REST, so no SDK is needed to reach it.
+        // generationConfig over REST, so no SDK is needed to reach it. camelCase
+        // is the canonical REST spelling; the snake_case form in Google's own
+        // curl examples is the proto3 alias and works too.
         if (request.JsonOnly)
             generationConfig["responseMimeType"] = "application/json";
+
+        // responseSchema goes INSIDE generationConfig on :generateContent. The
+        // current structured-output guide shows a root-level response_format
+        // object instead - that guide has been rewritten for the newer
+        // Interactions API and its shape is rejected here.
+        //
+        // Sanitised on the way in: Gemini accepts an OpenAPI subset, not full
+        // JSON Schema, and the very keyword OpenAI's strict mode REQUIRES -
+        // additionalProperties: false - is not in that subset. Without this,
+        // one schema could not serve all three providers, which is the whole
+        // point of passing a schema at all.
+        if (SchemaOf(request) is { } schema)
+            generationConfig["responseSchema"] = ToGeminiSchema(schema)!;
 
         var message = new HttpRequestMessage(HttpMethod.Post, url)
         {
@@ -289,42 +501,135 @@ public sealed class GeminiProvider : AiProviderBase
         return message;
     }
 
+    // THE "AQ." KEY PROBLEM - AND WHY THERE IS NO RETRY HERE ANY MORE.
+    //
+    // AI Studio now issues "auth keys" beginning "AQ." instead of the old
+    // "AIzaSy" standard keys, and many of them come back from generateContent
+    // with 401 ACCESS_TOKEN_TYPE_UNSUPPORTED - the endpoint asking for "an OAuth
+    // 2 access token, login cookie or other valid authentication credential".
+    //
+    // This code previously retried such a failure with Authorization: Bearer, on
+    // the reasoning that an AQ. key looks like a bearer credential. That was
+    // wrong and has been removed. Sending the key as a bearer token is reported
+    // to produce 400 "Multiple authentication credentials received", or a 401
+    // that says "invalid_api_key" about a perfectly valid key - so the retry
+    // replaced an accurate error with a misleading one, which is worse than
+    // failing. x-goog-api-key is the documented header for BOTH key types and is
+    // what Google's own current examples send.
+    //
+    // The real state of it, as of August 2026: the AQ. migration is deliberate
+    // and Google has published no fix for the 401. Reports include accounts with
+    // billing enabled, the API enabled, and a correctly restricted key, still
+    // rejected across raw curl, the SDK, the header and the ?key= parameter.
+    // Nothing on this side of the wire fixes that.
+    //
+    // What DOES help is telling the two failures apart, which is why Settings
+    // now calls ListModelsAsync first: if a plain GET of the model catalogue
+    // with the same key also 401s, the key is affected and no request shape will
+    // save it; if the GET succeeds and generateContent fails, the problem is the
+    // model name. See AiOrchestrator.TestAsync.
+
     /// <summary>
-    /// THE "AQ." KEY PROBLEM.
-    ///
-    /// AI Studio now issues keys beginning "AQ." instead of the long-standing
-    /// "AIzaSy" ones, and a lot of them come back from generateContent with
-    /// 401 ACCESS_TOKEN_TYPE_UNSUPPORTED - the endpoint replying that it wanted
-    /// "an OAuth 2 access token, login cookie or other valid authentication
-    /// credential" rather than an API key. Google's position is that the key
-    /// format is not itself the cause; there is no published fix.
-    ///
-    /// x-goog-api-key is the documented way to send an API key and stays the
-    /// first attempt. But since the endpoint is asking for a bearer credential,
-    /// and an AQ. key looks far more like one than AIzaSy did, it is worth
-    /// exactly one retry as a bearer token before giving up.
-    ///
-    /// Deliberately narrow: only on 401/403, only when the body names that
-    /// error, and only once. A blind retry on every failure would turn one bad
-    /// request into two and make rate limits worse.
+    /// JSON Schema keywords Gemini's OpenAPI-subset schema does not define.
+    /// Sending them is not ignored - it is a 400 on an otherwise correct call.
     /// </summary>
-    protected override HttpRequestMessage? BuildRecoveryRequest(
-        string apiKey, AiRequest request, System.Net.HttpStatusCode status, string body)
+    private static readonly HashSet<string> UnsupportedSchemaKeys = new(StringComparer.Ordinal)
     {
-        var authFailure = status is System.Net.HttpStatusCode.Unauthorized
-                                 or System.Net.HttpStatusCode.Forbidden;
+        "additionalProperties", "$schema", "$id", "title", "default", "examples",
+        "strict", "const", "patternProperties",
+    };
 
-        var looksLikeTokenTypeIssue =
-            body.Contains("ACCESS_TOKEN_TYPE_UNSUPPORTED", StringComparison.OrdinalIgnoreCase) ||
-            body.Contains("UNAUTHENTICATED", StringComparison.OrdinalIgnoreCase) ||
-            body.Contains("OAuth 2 access token", StringComparison.OrdinalIgnoreCase);
+    /// <summary>
+    /// Rewrites a JSON Schema into the subset Gemini accepts, dropping the
+    /// keywords above at every level. Structure, types, properties, required
+    /// and enums all survive - only the vocabulary Gemini has no opinion about
+    /// is removed.
+    /// </summary>
+    private static object? ToGeminiSchema(JsonElement node) => node.ValueKind switch
+    {
+        JsonValueKind.Object => node.EnumerateObject()
+            .Where(p => !UnsupportedSchemaKeys.Contains(p.Name))
+            .ToDictionary(p => p.Name, p => ToGeminiSchema(p.Value)),
 
-        if (!authFailure || !looksLikeTokenTypeIssue) return null;
+        JsonValueKind.Array => node.EnumerateArray().Select(ToGeminiSchema).ToList(),
+        JsonValueKind.String => node.GetString(),
+        JsonValueKind.Number => node.TryGetInt64(out var whole) ? whole : node.GetDouble(),
+        JsonValueKind.True => true,
+        JsonValueKind.False => false,
+        _ => null,
+    };
 
-        var retry = BuildRequest(apiKey, request);
-        retry.Headers.Remove("x-goog-api-key");
-        retry.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
-        return retry;
+    protected override HttpRequestMessage BuildListModelsRequest(string apiKey)
+    {
+        var message = new HttpRequestMessage(
+            HttpMethod.Get, "https://generativelanguage.googleapis.com/v1beta/models?pageSize=200");
+
+        message.Headers.Add("x-goog-api-key", apiKey);
+        return message;
+    }
+
+    protected override IReadOnlyList<AiModelInfo> ReadModels(JsonElement root)
+    {
+        if (!root.TryGetProperty("models", out var models) || models.ValueKind != JsonValueKind.Array)
+            return Array.Empty<AiModelInfo>();
+
+        return models.EnumerateArray()
+            .Select(m =>
+            {
+                // Gemini reports "models/gemini-3.5-flash"; requests take the
+                // bare id. Storing the prefixed form in Settings would 404.
+                var name = m.TryGetProperty("name", out var n) ? n.GetString() ?? "" : "";
+                var id = name.StartsWith("models/", StringComparison.Ordinal) ? name[7..] : name;
+
+                // Only models that can actually answer a generateContent call.
+                // The catalogue also lists embedding, TTS, video and image
+                // models, and picking one of those looks like a broken key.
+                var supported = m.TryGetProperty("supportedGenerationMethods", out var methods) &&
+                                methods.ValueKind == JsonValueKind.Array &&
+                                methods.EnumerateArray().Any(x =>
+                                    string.Equals(x.GetString(), "generateContent", StringComparison.OrdinalIgnoreCase));
+
+                return (id, supported,
+                        display: m.TryGetProperty("displayName", out var d) ? d.GetString() : null);
+            })
+            .Where(x => x.supported && x.id.Length > 0)
+            .Select(x => new AiModelInfo(x.id, x.display))
+            .ToList();
+    }
+
+    /// <summary>
+    /// Gemini answers "why is this empty" in two places, and neither is obvious
+    /// from a blank string: promptFeedback.blockReason when the INPUT was
+    /// refused, and candidates[0].finishReason when the OUTPUT stopped early.
+    /// </summary>
+    protected override string DescribeEmptyAnswer(JsonElement root)
+    {
+        if (root.TryGetProperty("promptFeedback", out var feedback) &&
+            feedback.TryGetProperty("blockReason", out var blocked))
+        {
+            return $"Gemini refused the request itself (blockReason {blocked.GetString()}). " +
+                   "The document text, not the model, is what it objected to.";
+        }
+
+        if (root.TryGetProperty("candidates", out var candidates) &&
+            candidates.ValueKind == JsonValueKind.Array &&
+            candidates.GetArrayLength() > 0 &&
+            candidates[0].TryGetProperty("finishReason", out var reason))
+        {
+            var value = reason.GetString();
+
+            return value switch
+            {
+                "MAX_TOKENS" => "Gemini used its entire output budget on internal reasoning and " +
+                                "produced no answer. Ask for fewer fields at once, or raise Max tokens.",
+                "SAFETY" or "PROHIBITED_CONTENT" =>
+                    $"Gemini stopped on a content filter ({value}).",
+                "RECITATION" => "Gemini stopped because the answer reproduced source text too closely.",
+                _ => $"The response contained no text (finishReason {value}).",
+            };
+        }
+
+        return "The response contained no text.";
     }
 
     protected override string? ReadAnswer(JsonElement root)
