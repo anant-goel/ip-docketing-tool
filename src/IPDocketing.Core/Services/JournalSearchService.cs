@@ -27,6 +27,7 @@ public class JournalSearchService
     private readonly AppDbContext _db;
     private IDocumentTextExtractor? _extractor;
     private JournalFetchService? _fetch;
+    private IJournalSource? _source;
     private string? _libraryPath;
 
     public JournalSearchService(AppDbContext db)
@@ -51,6 +52,19 @@ public class JournalSearchService
         _fetch = fetch;
         _libraryPath = libraryPath;
     }
+
+    /// <summary>
+    /// A live journal source, preferred over the stored URL when one is
+    /// configured.
+    ///
+    /// This matters more than it looks. A search holds a journal NUMBER from the
+    /// database, not a live link, and the stored Url may be stale or may never
+    /// have been fetchable in the first place - the plain HTTP listing read has
+    /// repeatedly produced rows with no links, which is how issues end up
+    /// recorded with an empty Url. Resolving the number against the live listing
+    /// on each attempt removes that whole chain.
+    /// </summary>
+    public void UseSource(IJournalSource source) => _source = source;
 
     public sealed record PageHit(
         string IssueNumber,
@@ -264,12 +278,47 @@ public class JournalSearchService
     /// </summary>
     private async Task<bool> TryDownloadAsync(JournalIssue issue, Action<string>? progress, CancellationToken ct)
     {
-        if (_fetch is null || _libraryPath is null) return false;
+        if (_libraryPath is null) return false;
+
+        // Live source first: it resolves the issue number against the listing as
+        // it stands now, so it does not depend on a stored URL.
+        if (_source is not null)
+        {
+            try
+            {
+                progress?.Invoke(
+                    $"Fetching Journal {issue.IssueNumber} via {_source.SourceName} (needed to search it)...");
+
+                var results = await _source.DownloadIssueAsync(issue.IssueNumber, _libraryPath, 8, ct);
+                var first = results.FirstOrDefault(r => r.Saved);
+
+                if (first is not null)
+                {
+                    issue.LocalPdfPath = first.FilePath;
+                    issue.PdfSizeBytes = first.Bytes;
+                    issue.DownloadedUtc = DateTime.UtcNow;
+                    issue.LastError = null;
+                    _db.SaveChanges();
+                    return true;
+                }
+
+                issue.LastError = results.FirstOrDefault()?.Error ?? "the journal source produced nothing";
+                _db.SaveChanges();
+            }
+            catch (OperationCanceledException) { throw; }
+            catch (Exception ex)
+            {
+                issue.LastError = $"{_source.SourceName}: {ex.Message}";
+            }
+        }
+
+        // HTTP fallback, and only where a URL was actually captured.
+        if (_fetch is null) return false;
         if (string.IsNullOrWhiteSpace(issue.Url)) return false;
 
         try
         {
-            progress?.Invoke($"Downloading Journal {issue.IssueNumber} (needed to search it)...");
+            progress?.Invoke($"Downloading Journal {issue.IssueNumber} over HTTP (fallback)...");
             var path = await _fetch.DownloadPdfAsync(issue.Url, _libraryPath, issue.IssueNumber, ct);
 
             var info = new FileInfo(path);

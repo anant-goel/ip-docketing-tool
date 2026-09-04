@@ -45,6 +45,7 @@ public class AutoSyncService : IDisposable
     private readonly string _libraryPath;
 
     private IDocumentTextExtractor? _extractor;
+    private IJournalSource? _source;
     private Timer? _timer;
     private readonly SemaphoreSlim _runGate = new(1, 1);
 
@@ -83,6 +84,13 @@ public class AutoSyncService : IDisposable
     /// Core stays free of a UI dependency.
     /// </summary>
     public void UseExtractor(IDocumentTextExtractor extractor) => _extractor = extractor;
+
+    /// <summary>
+    /// The journal source to prefer over the plain HTTP path for both listing
+    /// and download. Injected from the WinUI project, which is where the
+    /// browser-backed implementations live.
+    /// </summary>
+    public void UseSource(IJournalSource source) => _source = source;
 
     public void Start()
     {
@@ -143,26 +151,57 @@ public class AutoSyncService : IDisposable
             Report("Checking for new Journal issues...");
             try
             {
-                var latest = await _fetch.GetLatestIssuesAsync(IssuesToTrack, ct);
                 var known = _journal.GetAll()
                     .Select(j => j.IssueNumber)
                     .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-                foreach (var entry in latest)
+                // A configured source is preferred over the bare HTTP path. The
+                // HTTP path reads the listing without a session, and on this
+                // site that has consistently produced rows with no download
+                // links - issues get recorded with an empty Url and can never
+                // be fetched afterwards.
+                if (_source is not null)
                 {
-                    if (known.Contains(entry.JournalNumber)) continue;
+                    var listed = (await _source.ListIssuesAsync(ct))
+                        .OrderByDescending(i => i.PublicationDate ?? DateTime.MinValue)
+                        .Take(IssuesToTrack);
 
-                    var link = entry.ClassLinks.FirstOrDefault();
-                    _journal.Add(new JournalIssue
+                    foreach (var entry in listed)
                     {
-                        IssueNumber = entry.JournalNumber,
-                        PublicationDate = entry.PublicationDate ?? DateTime.Today,
-                        Url = link.PdfUrl ?? string.Empty,
-                        Notes = entry.ClassLinks.Count == 0
-                            ? "No class-range links advertised"
-                            : $"{entry.ClassLinks.Count} class-range PDF link(s)"
-                    });
-                    discovered++;
+                        if (known.Contains(entry.JournalNumber)) continue;
+
+                        _journal.Add(new JournalIssue
+                        {
+                            IssueNumber = entry.JournalNumber,
+                            PublicationDate = entry.PublicationDate ?? DateTime.Today,
+                            Url = entry.Links.FirstOrDefault(l => !l.RequiresClick)?.Url ?? string.Empty,
+                            Notes = entry.Links.Count == 0
+                                ? "No download links advertised"
+                                : $"{entry.Links.Count} link(s) seen via {_source.SourceName}"
+                        });
+                        discovered++;
+                    }
+                }
+                else
+                {
+                    var latest = await _fetch.GetLatestIssuesAsync(IssuesToTrack, ct);
+
+                    foreach (var entry in latest)
+                    {
+                        if (known.Contains(entry.JournalNumber)) continue;
+
+                        var link = entry.ClassLinks.FirstOrDefault();
+                        _journal.Add(new JournalIssue
+                        {
+                            IssueNumber = entry.JournalNumber,
+                            PublicationDate = entry.PublicationDate ?? DateTime.Today,
+                            Url = link.PdfUrl ?? string.Empty,
+                            Notes = entry.ClassLinks.Count == 0
+                                ? "No class-range links advertised"
+                                : $"{entry.ClassLinks.Count} class-range PDF link(s)"
+                        });
+                        discovered++;
+                    }
                 }
             }
             catch (Exception ex)

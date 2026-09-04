@@ -34,6 +34,18 @@ public partial class App : Application
     public static RenewalService Renewals { get; private set; } = null!;
     public static PortfolioImportService PortfolioImport { get; private set; } = null!;
     public static AutoSyncService AutoSync { get; private set; } = null!;
+
+    /// <summary>
+    /// Where Journal data is fetched from, in order of preference.
+    ///
+    /// The session client comes first: it holds a cookie jar and replays
+    /// __doPostBack targets as form posts, needs no browser, no UI thread and no
+    /// window, so it works inside the background sync and cannot paint itself
+    /// over the app. The embedded browser is added later, from MainWindow, as
+    /// the fallback for links whose target is computed by script at click time -
+    /// which the session client cannot see.
+    /// </summary>
+    public static ChainedJournalSource JournalSources { get; private set; } = null!;
     public static DocumentIngestService DocumentIngest { get; private set; } = null!;
     public static JournalSearchService JournalSearch { get; private set; } = null!;
 
@@ -391,6 +403,11 @@ public partial class App : Application
             AiKeys = new IPDocketing.Core.Ai.AiCredentialStore(AppDataDirectory);
             Ai = new IPDocketing.Core.Ai.AiOrchestrator(AiKeys);
 
+            // Constructed before the search and the sync so both can be handed
+            // it immediately. Needs no UI thread, so it is available from the
+            // first background tick rather than only once a window exists.
+            JournalSources = new ChainedJournalSource(new SessionJournalSource());
+
             JournalSearch = new JournalSearchService(Database);
             JournalSearch.UseExtractor(pdfExtractor);
 
@@ -399,6 +416,12 @@ public partial class App : Application
             // "not found" when nothing was actually searched.
             JournalSearch.UseDownloader(JournalFetch,
                 Path.Combine(AppDataDirectory, "JournalLibrary"));
+
+            // Both of these resolve a journal NUMBER against the live listing
+            // rather than trusting a stored URL, which is what makes them work
+            // on issues recorded with no usable link. HTTP remains the fallback.
+            JournalSearch.UseSource(JournalSources);
+            AutoSync.UseSource(JournalSources);
 
             // Renewal docketing is idempotent, so running it at every launch is
             // safe and means a mark can never sit in the register without its
@@ -478,6 +501,7 @@ public partial class App : Application
                     EncryptionService.EncryptFileTo(DatabasePath, sealedDb);
             }
             catch { /* ignore */ }
+            JournalSources?.Dispose();
             AutoSync?.Dispose();
             Backups?.Dispose();
             Database?.Dispose();

@@ -35,7 +35,7 @@ namespace IPDocketing.WinUI.Services;
 /// same public file a browser fetches when you click the link, obtained the
 /// same way.
 /// </summary>
-public sealed class HeadlessJournalDownloader : IDisposable
+public sealed class HeadlessJournalDownloader : IDisposable, IJournalSource
 {
     private readonly WebView2 _browser;
     private readonly DispatcherQueue _dispatcher;
@@ -717,5 +717,203 @@ public sealed class HeadlessJournalDownloader : IDisposable
         {
             // Teardown of a hidden helper is never worth surfacing.
         }
+    }
+
+    public string SourceName => "Embedded browser";
+
+    /// <summary>
+    /// Lists every issue on the listing, read from the live DOM.
+    ///
+    /// This is the whole point of the rework: the browser sees the page as the
+    /// Registry actually serves it to a browser - after script has run and with
+    /// whatever session cookie was set on first visit. An HttpClient sees a
+    /// different document, which is why it found rows but no links.
+    /// </summary>
+    public async Task<List<JournalSourceIssue>> ListIssuesAsync(CancellationToken ct = default)
+    {
+        await EnsureReadyAsync();
+
+        Report("Opening the Journal listing...");
+        if (!await NavigateAsync(ListingUrl, TimeSpan.FromSeconds(45)))
+            throw new InvalidOperationException("The Journal listing page did not load in the embedded browser.");
+
+        await Task.Delay(1500, ct);
+
+        const string script = """
+            (function () {
+                var sel = 'a, input[type="image"], input[type="submit"], input[type="button"], button, img[onclick]';
+                var all = Array.prototype.slice.call(document.querySelectorAll(sel));
+                var issues = [];
+
+                function labelFor(el, ordinal) {
+                    var c = [
+                        (el.innerText || '').trim(),
+                        el.getAttribute('title') || '',
+                        el.getAttribute('alt') || '',
+                        el.getAttribute('aria-label') || '',
+                        el.value || ''
+                    ];
+                    var img = el.querySelector ? el.querySelector('img') : null;
+                    if (img) {
+                        c.push(img.getAttribute('alt') || '');
+                        c.push(img.getAttribute('title') || '');
+                    }
+                    var href = el.getAttribute('href') || '';
+                    var m = href.match(/([^\/\\?#]+)\.(pdf|zip)/i);
+                    if (m) c.push(m[1]);
+                    for (var i = 0; i < c.length; i++) {
+                        var v = (c[i] || '').replace(/\s+/g, ' ').trim();
+                        if (v.length > 0 && v.length < 120) return v;
+                    }
+                    return 'Download ' + (ordinal + 1);
+                }
+
+                var rows = document.querySelectorAll('tr');
+                for (var r = 0; r < rows.length; r++) {
+                    var cells = rows[r].querySelectorAll('td');
+                    if (cells.length < 3) continue;
+
+                    // Find the issue number and a date anywhere in the row,
+                    // rather than assuming fixed column positions.
+                    var number = '', date = '';
+                    for (var c = 0; c < cells.length; c++) {
+                        var t = (cells[c].innerText || '').trim();
+                        if (!number && /^\d{3,5}$/.test(t)) { number = t; continue; }
+                        if (!date && /^\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{2,4}$/.test(t)) { date = t; }
+                    }
+                    if (!number) continue;
+
+                    var links = [];
+                    var clickables = rows[r].querySelectorAll(sel);
+                    for (var k = 0; k < clickables.length; k++) {
+                        var el = clickables[k];
+                        var href = el.getAttribute('href') || '';
+                        var usable = href && href.indexOf('javascript:') !== 0 && href.indexOf('#') !== 0
+                            ? el.href
+                            : '';
+                        links.push({
+                            label: labelFor(el, k),
+                            url: usable,
+                            index: all.indexOf(el)
+                        });
+                    }
+
+                    issues.push({ number: number, date: date, links: links });
+                }
+
+                return JSON.stringify(issues);
+            })();
+            """;
+
+        var json = await RunScriptAsync(script);
+        var result = new List<JournalSourceIssue>();
+        if (string.IsNullOrWhiteSpace(json)) return result;
+
+        using var parsed = System.Text.Json.JsonDocument.Parse(json);
+        foreach (var item in parsed.RootElement.EnumerateArray())
+        {
+            var number = item.GetProperty("number").GetString() ?? "";
+            var dateText = item.TryGetProperty("date", out var d) ? d.GetString() : null;
+
+            var links = new List<JournalSourceLink>();
+            if (item.TryGetProperty("links", out var linkArray))
+            {
+                foreach (var l in linkArray.EnumerateArray())
+                {
+                    var label = l.GetProperty("label").GetString() ?? "";
+                    var url = l.TryGetProperty("url", out var u) ? u.GetString() : null;
+                    var index = l.TryGetProperty("index", out var i) ? i.GetInt32() : -1;
+                    if (index < 0) continue;
+                    links.Add(new JournalSourceLink(label, string.IsNullOrWhiteSpace(url) ? null : url, index));
+                }
+            }
+
+            result.Add(new JournalSourceIssue(number, ParseDate(dateText), links));
+        }
+
+        return result;
+    }
+
+    public async Task<JournalDownloadResult> DownloadAsync(
+        JournalSourceIssue issue, JournalSourceLink link, string targetPath,
+        CancellationToken ct = default)
+    {
+        // The URL is carried through as Href. Without it every download here
+        // takes the index-click path, and a document-wide index is not a stable
+        // address across the re-navigation that happens between links - which is
+        // how a click lands on the wrong anchor and the Registry answers with
+        // "The UNC path should be of the form \\server\share". Where the link
+        // has a real address, navigating to it is what a person clicking it does.
+        var outcome = await DownloadLinkAsync(
+            new LinkInfo(link.ElementIndex, link.Label, link.Url), targetPath, TimeSpan.FromMinutes(4));
+
+        return outcome.Saved
+            ? JournalDownloadResult.Success(outcome.FilePath!, outcome.Bytes)
+            : JournalDownloadResult.Failure(outcome.Error ?? "unknown");
+    }
+
+    public async Task<List<JournalDownloadResult>> DownloadIssueAsync(
+        string journalNumber, string targetDirectory, int maxFiles = 8,
+        CancellationToken ct = default)
+    {
+        var results = new List<JournalDownloadResult>();
+        Directory.CreateDirectory(targetDirectory);
+
+        var issues = await ListIssuesAsync(ct);
+        var issue = issues.FirstOrDefault(i =>
+            string.Equals(i.JournalNumber, journalNumber, StringComparison.OrdinalIgnoreCase));
+
+        if (issue is null)
+        {
+            results.Add(JournalDownloadResult.Failure(
+                $"Journal {journalNumber} is not on the current listing page."));
+            return results;
+        }
+
+        if (issue.Links.Count == 0)
+        {
+            results.Add(JournalDownloadResult.Failure(
+                $"Journal {journalNumber} was found but carries no download links."));
+            return results;
+        }
+
+        foreach (var link in issue.Links.Take(maxFiles))
+        {
+            ct.ThrowIfCancellationRequested();
+
+            var safe = string.Concat(link.Label.Select(c => char.IsLetterOrDigit(c) ? c : '_'));
+            if (safe.Length > 50) safe = safe[..50];
+
+            var target = Path.Combine(targetDirectory, $"journal_{journalNumber}_{safe}.pdf");
+
+            // Don't re-fetch a file already on disk - these run to hundreds of MB.
+            if (File.Exists(target) && new FileInfo(target).Length > 20_000)
+            {
+                results.Add(JournalDownloadResult.Success(target, new FileInfo(target).Length));
+                continue;
+            }
+
+            results.Add(await DownloadAsync(issue, link, target, ct));
+            await ReturnToListingAsync();
+        }
+
+        return results;
+    }
+
+    private static DateTime? ParseDate(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return null;
+        string[] formats =
+        {
+            "dd/MM/yyyy", "d/M/yyyy", "dd-MM-yyyy", "d-M-yyyy", "dd.MM.yyyy", "d.M.yyyy",
+            "dd/MM/yy", "d/M/yy", "dd MMM yyyy", "d MMM yyyy", "dd-MMM-yyyy",
+            "MMM d, yyyy", "MMMM d, yyyy", "yyyy-MM-dd",
+        };
+        foreach (var f in formats)
+            if (DateTime.TryParseExact(text.Trim(), f,
+                System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.None, out var parsed))
+                return parsed.Date;
+        return null;
     }
 }

@@ -316,8 +316,43 @@ public sealed partial class JournalPage : Page
         report.AppendLine($"   Marker  : AutoDownload + SelfTest present (phase 51)");
         report.AppendLine();
 
+        // 1b. Which source can actually reach the listing.
+        //
+        // This is the part worth reading first. Each source is tried in order and
+        // its result recorded, so "issues found but no links" is reported as the
+        // distinct outcome it is rather than blending into a bare failure. That
+        // specific half-success is what every previous attempt produced while
+        // looking superficially fine.
+        report.AppendLine("1b. Journal sources");
+        if (App.JournalSources is { } chain)
+        {
+            try
+            {
+                var viaChain = await chain.ListIssuesAsync();
+                var linkTotal = viaChain.Sum(i => i.Links.Count);
+
+                foreach (var attempt in chain.AttemptLog)
+                    report.AppendLine($"   {attempt}");
+
+                report.AppendLine($"   Winner  : {chain.LastSourceUsed ?? "none"}");
+                report.AppendLine($"   Result  : {viaChain.Count} issue(s), {linkTotal} link(s)");
+
+                if (linkTotal == 0)
+                    report.AppendLine("   >>> Issues parsed, zero links. No source could reach the download column.");
+            }
+            catch (Exception ex)
+            {
+                report.AppendLine($"   FAILED: {ex.Message}");
+            }
+        }
+        else
+        {
+            report.AppendLine("   No journal sources are configured.");
+        }
+        report.AppendLine();
+
         // 2. Network reach.
-        report.AppendLine("2. Reaching the listing page");
+        report.AppendLine("2. Reaching the listing page (plain HTTP, for comparison)");
         string? html = null;
         try
         {
@@ -512,6 +547,15 @@ public sealed partial class JournalPage : Page
             downloader = new HeadlessJournalDownloader(HiddenBrowserHost, visible);
             downloader.Progress += message =>
                 DispatcherQueue.TryEnqueue(() => FetchStatusText.Text = message);
+
+            // Hand the browser to the shared chain as its fallback source.
+            //
+            // Appended, never substituted: the session client stays first
+            // because it needs no UI thread and finishes in a fraction of the
+            // time. The browser is here for the one case the session client
+            // genuinely cannot cover - a link whose target is written by script
+            // at click time, which is not in the markup to be found.
+            App.JournalSources?.Add(downloader);
 
             var links = await downloader.ListLinksAsync(journalNumber, publicationDate);
 
